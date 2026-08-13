@@ -116,6 +116,37 @@ const LETTERS = ["A", "B", "C"];
 const CUSTOM_BOOK_ID = "personalizado";
 const LIBRARY_STORAGE_KEY = "duelo-biblico:biblioteca";
 
+/* ---------------------------------------------------------
+   SONIDO (generado con Web Audio API, sin archivos externos)
+--------------------------------------------------------- */
+let __audioCtx = null;
+function playChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!__audioCtx) __audioCtx = new Ctx();
+    if (__audioCtx.state === "suspended") __audioCtx.resume();
+    const now = __audioCtx.currentTime;
+    const notes = [523.25, 659.25]; // do - mi: campanita breve de transición
+    notes.forEach((freq, i) => {
+      const osc = __audioCtx.createOscillator();
+      const gain = __audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const t0 = now + i * 0.13;
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(0.16, t0 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.38);
+      osc.connect(gain);
+      gain.connect(__audioCtx.destination);
+      osc.start(t0);
+      osc.stop(t0 + 0.4);
+    });
+  } catch (e) {
+    // Web Audio no disponible: se omite el sonido sin interrumpir el juego
+  }
+}
+
 function seedLibrary() {
   return [
     ...BOOKS.map((b) => ({ ...b, questions: b.questions.map((q) => ({ ...q, options: [...q.options] })) })),
@@ -161,9 +192,9 @@ function RoseWindow({ size = 120, colorA = "#8B2E3F", colorB = "#1F6F5C" }) {
 /* ---------------------------------------------------------
    TEMPORIZADOR (anillo regresivo)
 --------------------------------------------------------- */
-function TimerRing({ secondsLeft, totalSeconds, size = 60 }) {
+function TimerRing({ secondsLeft, totalSeconds, size = 60, strokeWidth = 5 }) {
   const pct = totalSeconds > 0 ? Math.max(0, secondsLeft / totalSeconds) : 0;
-  const radius = (size - 8) / 2;
+  const radius = (size - strokeWidth * 1.6) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - pct);
   const urgent = secondsLeft <= 5 && secondsLeft > 0;
@@ -177,9 +208,9 @@ function TimerRing({ secondsLeft, totalSeconds, size = 60 }) {
       aria-label={`${secondsLeft} segundos restantes`}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#243A5E" strokeWidth="5" />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#243A5E" strokeWidth={strokeWidth} />
         <circle
-          cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth="5"
+          cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={strokeWidth}
           strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
           style={{ transition: "stroke-dashoffset 1s linear, stroke 0.3s ease" }}
@@ -187,7 +218,7 @@ function TimerRing({ secondsLeft, totalSeconds, size = 60 }) {
       </svg>
       <div
         className="font-display"
-        style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color, fontSize: size * 0.32, fontWeight: 700 }}
+        style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color, fontSize: size * 0.4, fontWeight: 700 }}
       >
         {secondsLeft}
       </div>
@@ -206,6 +237,8 @@ export default function App() {
   const [team2Color, setTeam2Color] = useState(TEAM_COLORS[1].hex);
   const [timerSeconds, setTimerSeconds] = useState(20);
   const [verseDisplaySeconds, setVerseDisplaySeconds] = useState(5);
+  const [verseDelaySeconds, setVerseDelaySeconds] = useState(3);
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const [bookId, setBookId] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [qIndex, setQIndex] = useState(0);
@@ -425,6 +458,8 @@ export default function App() {
         <SettingsScreen
           timerSeconds={timerSeconds} setTimerSeconds={setTimerSeconds}
           verseDisplaySeconds={verseDisplaySeconds} setVerseDisplaySeconds={setVerseDisplaySeconds}
+          verseDelaySeconds={verseDelaySeconds} setVerseDelaySeconds={setVerseDelaySeconds}
+          soundEnabled={soundEnabled} setSoundEnabled={setSoundEnabled}
           onBack={() => setScreen(screenBeforeManage)}
         />
       )}
@@ -443,6 +478,8 @@ export default function App() {
           showFeedback={showFeedback}
           timerSeconds={timerSeconds}
           verseDisplaySeconds={verseDisplaySeconds}
+          verseDelaySeconds={verseDelaySeconds}
+          soundEnabled={soundEnabled}
           onAnswer={handleAnswer}
           onNext={nextQuestion}
         />
@@ -567,7 +604,7 @@ function TeamCard({ label, name, setName, color, setColor }) {
 /* ---------------------------------------------------------
    PANTALLA: Configuración
 --------------------------------------------------------- */
-function SettingsScreen({ timerSeconds, setTimerSeconds, verseDisplaySeconds, setVerseDisplaySeconds, onBack }) {
+function SettingsScreen({ timerSeconds, setTimerSeconds, verseDisplaySeconds, setVerseDisplaySeconds, verseDelaySeconds, setVerseDelaySeconds, soundEnabled, setSoundEnabled, onBack }) {
   return (
     <div style={styles.container} className="fade-in">
       <button
@@ -627,6 +664,55 @@ function SettingsScreen({ timerSeconds, setTimerSeconds, verseDisplaySeconds, se
         </div>
         <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 8 }}>
           Cuánto tiempo se muestra en pantalla el versículo al responder.
+        </div>
+      </div>
+
+      <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
+        <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+            <Timer size={16} /> Pausa antes del versículo
+          </span>
+          <span className="font-display" style={{ color: "#F5EFE0", fontSize: 20 }}>{verseDelaySeconds}s</span>
+        </div>
+        <input
+          className="gold-range"
+          type="range"
+          min={0}
+          max={10}
+          step={1}
+          value={verseDelaySeconds}
+          onChange={(e) => setVerseDelaySeconds(Number(e.target.value))}
+          aria-label="Segundos de pausa entre ver la respuesta y el versículo"
+        />
+        <div className="font-ui" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#8FA0B8", marginTop: 6 }}>
+          <span>0s</span><span>10s</span>
+        </div>
+        <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 8 }}>
+          Cuánto se espera después de ver si la respuesta fue correcta, antes de mostrar el versículo.
+        </div>
+      </div>
+
+      <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
+        <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+            <Sparkles size={16} /> Sonido entre preguntas
+          </span>
+          <button
+            className="font-ui"
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            aria-pressed={soundEnabled}
+            style={{
+              padding: "6px 16px", borderRadius: 20, cursor: "pointer", fontSize: 13, fontWeight: 700,
+              background: soundEnabled ? "#B8892B" : "transparent",
+              color: soundEnabled ? "#16233D" : "#8FA0B8",
+              border: soundEnabled ? "1.5px solid #B8892B" : "1.5px solid #3A5578",
+            }}
+          >
+            {soundEnabled ? "Activado" : "Desactivado"}
+          </button>
+        </div>
+        <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 10 }}>
+          Reproduce una campanita breve cada vez que aparece una pregunta nueva.
         </div>
       </div>
     </div>
@@ -1044,7 +1130,7 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
 /* ---------------------------------------------------------
    PANTALLA 3: Juego
 --------------------------------------------------------- */
-function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, scores, selected, showFeedback, timerSeconds, verseDisplaySeconds, onAnswer, onNext }) {
+function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, scores, selected, showFeedback, timerSeconds, verseDisplaySeconds, verseDelaySeconds, soundEnabled, onAnswer, onNext }) {
   const activeColor = teamColor(turn);
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
   const [verseVisible, setVerseVisible] = useState(false);
@@ -1066,16 +1152,31 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
     return () => clearTimeout(id);
   }, [timeLeft, showFeedback]);
 
-  // Muestra el versículo como mensaje emergente al revelar la respuesta, con su propio conteo regresivo
+  // Sonido breve cada vez que aparece una pregunta nueva
   useEffect(() => {
-    if (showFeedback && currentQ?.verseText) {
+    if (soundEnabled) playChime();
+  }, [qIndex]);
+
+  // Tras revelar la respuesta, espera la pausa configurada y luego muestra
+  // el versículo como mensaje emergente, con su propio conteo regresivo.
+  useEffect(() => {
+    if (!(showFeedback && currentQ?.verseText)) {
+      setVerseVisible(false);
+      return;
+    }
+    const startTimer = setTimeout(() => {
       setVerseVisible(true);
       setVerseSecondsLeft(verseDisplaySeconds);
-      const t = setTimeout(() => setVerseVisible(false), verseDisplaySeconds * 1000);
-      return () => clearTimeout(t);
-    }
-    setVerseVisible(false);
-  }, [showFeedback, qIndex, currentQ, verseDisplaySeconds]);
+    }, verseDelaySeconds * 1000);
+    return () => clearTimeout(startTimer);
+  }, [showFeedback, qIndex, currentQ, verseDelaySeconds, verseDisplaySeconds]);
+
+  // Oculta el versículo automáticamente al terminar su tiempo en pantalla
+  useEffect(() => {
+    if (!verseVisible) return;
+    const hideTimer = setTimeout(() => setVerseVisible(false), verseDisplaySeconds * 1000);
+    return () => clearTimeout(hideTimer);
+  }, [verseVisible, verseDisplaySeconds]);
 
   useEffect(() => {
     if (!verseVisible || verseSecondsLeft <= 0) return;
@@ -1103,9 +1204,9 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
       </div>
 
       {/* Turno + temporizador */}
-      <div key={qIndex} className="fade-in" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, margin: "22px 0 10px" }}>
-        <TimerRing secondsLeft={showFeedback ? timeLeft : timeLeft} totalSeconds={timerSeconds} />
-        <div className="font-ui" style={{ fontSize: 14, color: "#F5EFE0" }}>
+      <div key={qIndex} className="fade-in" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, margin: "26px 0 14px" }}>
+        <TimerRing secondsLeft={timeLeft} totalSeconds={timerSeconds} size={128} strokeWidth={9} />
+        <div className="font-ui" style={{ fontSize: 15, color: "#F5EFE0" }}>
           Turno de <span style={{ color: activeColor, fontWeight: 700 }}>{teamName(turn)}</span>
         </div>
       </div>
@@ -1185,7 +1286,7 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
           <div key={"verse-overlay" + qIndex} className="verse-toast-overlay" style={{ ...styles.verseToastOverlay, animationDuration: `${verseDisplaySeconds}s` }} aria-hidden="true" />
           <div key={"verse-toast" + qIndex} className="verse-toast-card" style={{ ...styles.verseToast, animationDuration: `${verseDisplaySeconds}s` }} role="status" aria-live="polite">
             <div style={{ display: "flex", justifyContent: "center" }}>
-              <TimerRing secondsLeft={verseSecondsLeft} totalSeconds={verseDisplaySeconds} size={40} />
+              <TimerRing secondsLeft={verseSecondsLeft} totalSeconds={verseDisplaySeconds} size={56} strokeWidth={5} />
             </div>
             <div className="font-display" style={{ fontSize: 20, color: "#D4AF5A", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 10, marginBottom: 16, textAlign: "center" }}>
               {book?.name} {currentQ.chapter}{currentQ.chapter && currentQ.verse ? ":" : ""}{currentQ.verse}
