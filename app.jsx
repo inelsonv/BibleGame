@@ -137,71 +137,36 @@ const TEAM_COLORS = [
   { hex: "#B8892B", name: "Oro" },
 ];
 
+const TEAM_ICONS = [
+  { id: "shield", label: "Escudo", symbol: "\u{1F6E1}\uFE0F" }, { id: "dove", label: "Paloma", symbol: "\u{1F54A}" },
+  { id: "crown", label: "Corona", symbol: "\u{1F451}" }, { id: "star", label: "Estrella", symbol: "\u2B50" },
+  { id: "fire", label: "Llama", symbol: "\u{1F525}" }, { id: "lion", label: "Leon", symbol: "\u{1F981}" },
+];
+const BIBLE_BOOKS = [
+  ["genesis","Genesis","Antiguo Testamento"],["exodo","Exodo","Antiguo Testamento"],["levitico","Levitico","Antiguo Testamento"],["numeros","Numeros","Antiguo Testamento"],["deuteronomio","Deuteronomio","Antiguo Testamento"],["josue","Josue","Antiguo Testamento"],["jueces","Jueces","Antiguo Testamento"],["rut","Rut","Antiguo Testamento"],["1-samuel","1 Samuel","Antiguo Testamento"],["2-samuel","2 Samuel","Antiguo Testamento"],["1-reyes","1 Reyes","Antiguo Testamento"],["2-reyes","2 Reyes","Antiguo Testamento"],["1-cronicas","1 Cronicas","Antiguo Testamento"],["2-cronicas","2 Cronicas","Antiguo Testamento"],["esdras","Esdras","Antiguo Testamento"],["nehemias","Nehemias","Antiguo Testamento"],["ester","Ester","Antiguo Testamento"],["job","Job","Antiguo Testamento"],["salmos","Salmos","Antiguo Testamento"],["proverbios","Proverbios","Antiguo Testamento"],["eclesiastes","Eclesiastes","Antiguo Testamento"],["cantares","Cantares","Antiguo Testamento"],["isaias","Isaias","Antiguo Testamento"],["jeremias","Jeremias","Antiguo Testamento"],["lamentaciones","Lamentaciones","Antiguo Testamento"],["ezequiel","Ezequiel","Antiguo Testamento"],["daniel","Daniel","Antiguo Testamento"],["oseas","Oseas","Antiguo Testamento"],["joel","Joel","Antiguo Testamento"],["amos","Amos","Antiguo Testamento"],["abdias","Abdias","Antiguo Testamento"],["jonas","Jonas","Antiguo Testamento"],["miqueas","Miqueas","Antiguo Testamento"],["nahum","Nahum","Antiguo Testamento"],["habacuc","Habacuc","Antiguo Testamento"],["sofonias","Sofonias","Antiguo Testamento"],["hageo","Hageo","Antiguo Testamento"],["zacarias","Zacarias","Antiguo Testamento"],["malaquias","Malaquias","Antiguo Testamento"],
+  ["mateo","Mateo","Nuevo Testamento"],["marcos","Marcos","Nuevo Testamento"],["lucas","Lucas","Nuevo Testamento"],["juan","Juan","Nuevo Testamento"],["hechos","Hechos","Nuevo Testamento"],["romanos","Romanos","Nuevo Testamento"],["1-corintios","1 Corintios","Nuevo Testamento"],["2-corintios","2 Corintios","Nuevo Testamento"],["galatas","Galatas","Nuevo Testamento"],["efesios","Efesios","Nuevo Testamento"],["filipenses","Filipenses","Nuevo Testamento"],["colosenses","Colosenses","Nuevo Testamento"],["1-tesalonicenses","1 Tesalonicenses","Nuevo Testamento"],["2-tesalonicenses","2 Tesalonicenses","Nuevo Testamento"],["1-timoteo","1 Timoteo","Nuevo Testamento"],["2-timoteo","2 Timoteo","Nuevo Testamento"],["tito","Tito","Nuevo Testamento"],["filemon","Filemon","Nuevo Testamento"],["hebreos","Hebreos","Nuevo Testamento"],["santiago","Santiago","Nuevo Testamento"],["1-pedro","1 Pedro","Nuevo Testamento"],["2-pedro","2 Pedro","Nuevo Testamento"],["1-juan","1 Juan","Nuevo Testamento"],["2-juan","2 Juan","Nuevo Testamento"],["3-juan","3 Juan","Nuevo Testamento"],["judas","Judas","Nuevo Testamento"],["apocalipsis","Apocalipsis","Nuevo Testamento"],
+];
+
 const LETTERS = ["A", "B", "C"];
 const CUSTOM_BOOK_ID = "personalizado";
 const LIBRARY_STORAGE_KEY = "duelo-biblico:biblioteca";
 
-/* ---------------------------------------------------------
-   SONIDO (generado con Web Audio API, sin archivos externos)
---------------------------------------------------------- */
-let __audioCtx = null;
-function playChime() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    if (!__audioCtx) __audioCtx = new Ctx();
-    if (__audioCtx.state === "suspended") __audioCtx.resume();
-    const now = __audioCtx.currentTime;
-    const notes = [523.25, 659.25]; // do - mi: campanita breve de transición
-    notes.forEach((freq, i) => {
-      const osc = __audioCtx.createOscillator();
-      const gain = __audioCtx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      const t0 = now + i * 0.13;
-      gain.gain.setValueAtTime(0, t0);
-      gain.gain.linearRampToValueAtTime(0.16, t0 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.38);
-      osc.connect(gain);
-      gain.connect(__audioCtx.destination);
-      osc.start(t0);
-      osc.stop(t0 + 0.4);
-    });
-  } catch (e) {
-    // Web Audio no disponible: se omite el sonido sin interrumpir el juego
-  }
-}
-
-function playTick(secondsLeft) {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    if (!__audioCtx) __audioCtx = new Ctx();
-    if (__audioCtx.state === "suspended") __audioCtx.resume();
-    const now = __audioCtx.currentTime;
-    // El tono sube levemente cada segundo restante, para dar sensación de suspenso creciente
-    const freq = 300 + (5 - secondsLeft) * 55;
-    const osc = __audioCtx.createOscillator();
-    const gain = __audioCtx.createGain();
-    osc.type = "square";
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.11, now + 0.006);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-    osc.connect(gain);
-    gain.connect(__audioCtx.destination);
-    osc.start(now);
-    osc.stop(now + 0.14);
-  } catch (e) {
-    // Web Audio no disponible: se omite el sonido sin interrumpir el juego
-  }
-}
-
 function seedLibrary() {
+  const baseById = new Map(BOOKS.map((b) => [b.id, b]));
   return [
-    ...BOOKS.map((b) => ({ ...b, questions: b.questions.map((q) => ({ ...q, options: [...q.options] })) })),
+    ...BIBLE_BOOKS.map(([id, name, testament]) => {
+      const base = baseById.get(id);
+      return base ? { ...base, questions: base.questions.map((q) => ({ ...q, options: [...q.options] })) } : { id, name, testament, letter: name.slice(0, 1), questions: [] };
+    }),
     { id: CUSTOM_BOOK_ID, name: "Mis preguntas", testament: "Personalizado", letter: "+", questions: [] },
   ];
+}
+function normalizeLibrary(savedLibrary) {
+  const savedById = new Map(savedLibrary.map((book) => [book.id, book]));
+  return seedLibrary().map((base) => {
+    const saved = savedById.get(base.id);
+    return saved ? { ...base, ...saved, questions: Array.isArray(saved.questions) ? saved.questions : base.questions } : base;
+  });
 }
 
 function shuffle(arr) {
@@ -242,9 +207,9 @@ function RoseWindow({ size = 120, colorA = "#8B2E3F", colorB = "#1F6F5C" }) {
 /* ---------------------------------------------------------
    TEMPORIZADOR (anillo regresivo)
 --------------------------------------------------------- */
-function TimerRing({ secondsLeft, totalSeconds, size = 60, strokeWidth = 5 }) {
+function TimerRing({ secondsLeft, totalSeconds, size = 60 }) {
   const pct = totalSeconds > 0 ? Math.max(0, secondsLeft / totalSeconds) : 0;
-  const radius = (size - strokeWidth * 1.6) / 2;
+  const radius = (size - 8) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - pct);
   const urgent = secondsLeft <= 5 && secondsLeft > 0;
@@ -258,9 +223,9 @@ function TimerRing({ secondsLeft, totalSeconds, size = 60, strokeWidth = 5 }) {
       aria-label={`${secondsLeft} segundos restantes`}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#243A5E" strokeWidth={strokeWidth} />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#243A5E" strokeWidth="5" />
         <circle
-          cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={strokeWidth}
+          cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth="5"
           strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
           style={{ transition: "stroke-dashoffset 1s linear, stroke 0.3s ease" }}
@@ -268,7 +233,7 @@ function TimerRing({ secondsLeft, totalSeconds, size = 60, strokeWidth = 5 }) {
       </svg>
       <div
         className="font-display"
-        style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color, fontSize: size * 0.4, fontWeight: 700 }}
+        style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color, fontSize: size * 0.32, fontWeight: 700 }}
       >
         {secondsLeft}
       </div>
@@ -285,10 +250,12 @@ function App() {
   const [team2Name, setTeam2Name] = useState("");
   const [team1Color, setTeam1Color] = useState(TEAM_COLORS[0].hex);
   const [team2Color, setTeam2Color] = useState(TEAM_COLORS[1].hex);
+  const [team1Icon, setTeam1Icon] = useState(TEAM_ICONS[0].id);
+  const [team2Icon, setTeam2Icon] = useState(TEAM_ICONS[1].id);
+  const [backgroundColor, setBackgroundColor] = useState("#0F1A2E");
+  const [narrationEnabled, setNarrationEnabled] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(20);
   const [verseDisplaySeconds, setVerseDisplaySeconds] = useState(5);
-  const [verseDelaySeconds, setVerseDelaySeconds] = useState(3);
-  const [soundEnabled, setSoundEnabled] = useState(true);
   const [bookId, setBookId] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [qIndex, setQIndex] = useState(0);
@@ -310,7 +277,7 @@ function App() {
         const result = await window.storage.get(LIBRARY_STORAGE_KEY, false);
         if (!cancelled && result?.value) {
           const parsed = JSON.parse(result.value);
-          if (Array.isArray(parsed) && parsed.length > 0) setLibrary(parsed);
+          if (Array.isArray(parsed) && parsed.length > 0) setLibrary(normalizeLibrary(parsed));
         }
       } catch (e) {
         // primera vez que se abre la app: se usa la biblioteca base por defecto
@@ -357,6 +324,7 @@ function App() {
   const currentQ = questions[qIndex];
   const teamName = (n) => (n === 1 ? team1Name || "Equipo 1" : team2Name || "Equipo 2");
   const teamColor = (n) => (n === 1 ? team1Color : team2Color);
+  const teamIcon = (n) => TEAM_ICONS.find((icon) => icon.id === (n === 1 ? team1Icon : team2Icon)) || TEAM_ICONS[0];
 
   function goToBookSelect() {
     if (!team1Name.trim() || !team2Name.trim()) return;
@@ -423,7 +391,7 @@ function App() {
     scores[1] === scores[2] ? "empate" : scores[1] > scores[2] ? 1 : 2;
 
   return (
-    <div style={styles.page}>
+    <div style={{ ...styles.page, background: backgroundColor }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600;700&display=swap');
         * { box-sizing: border-box; }
@@ -446,12 +414,24 @@ function App() {
           100% { transform: translate(var(--drift), 105vh) rotate(var(--rotate)); opacity: 0.85; }
         }
         @media (prefers-reduced-motion: reduce) { .confetti-piece { display: none; } }
-        .verse-inline { animation: verseIn 0.4s ease both; }
-        @keyframes verseIn {
-          0% { opacity: 0; transform: translateY(-6px); max-height: 0; }
-          100% { opacity: 1; transform: translateY(0); max-height: 400px; }
+        .verse-toast-overlay { animation: verseOverlay 5s ease forwards; }
+        @keyframes verseOverlay {
+          0% { opacity: 0; }
+          6% { opacity: 1; }
+          85% { opacity: 1; }
+          100% { opacity: 0; }
         }
-        @media (prefers-reduced-motion: reduce) { .verse-inline { animation: none !important; } }
+        .verse-toast-card { animation: verseCard 5s ease forwards; }
+        @keyframes verseCard {
+          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.94); }
+          6% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+          85% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(0.97); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .verse-toast-overlay, .verse-toast-card { animation: none !important; opacity: 1 !important; }
+          .verse-toast-card { transform: translate(-50%, -50%) !important; }
+        }
         input[type="range"].gold-range { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: #3A5578; border-radius: 4px; outline: none; }
         input[type="range"].gold-range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #B8892B; border: 2px solid #F5EFE0; cursor: pointer; margin-top: -1px; }
         input[type="range"].gold-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #B8892B; border: 2px solid #F5EFE0; cursor: pointer; }
@@ -461,8 +441,8 @@ function App() {
         <SetupScreen
           team1Name={team1Name} setTeam1Name={setTeam1Name}
           team2Name={team2Name} setTeam2Name={setTeam2Name}
-          team1Color={team1Color} setTeam1Color={setTeam1Color}
-          team2Color={team2Color} setTeam2Color={setTeam2Color}
+          team1Color={team1Color} setTeam1Color={setTeam1Color} team1Icon={team1Icon} setTeam1Icon={setTeam1Icon}
+          team2Color={team2Color} setTeam2Color={setTeam2Color} team2Icon={team2Icon} setTeam2Icon={setTeam2Icon}
           customCount={customCount}
           onManage={() => openManage("setup")}
           onSettings={() => openSettings("setup")}
@@ -474,7 +454,7 @@ function App() {
         <BookSelectScreen
           team1Name={teamName(1)} team2Name={teamName(2)}
           team1Color={team1Color} team2Color={team2Color}
-          books={playableBooks}
+          books={library}
           onSelect={startGame}
           onManage={() => openManage("book")}
         />
@@ -496,8 +476,8 @@ function App() {
         <SettingsScreen
           timerSeconds={timerSeconds} setTimerSeconds={setTimerSeconds}
           verseDisplaySeconds={verseDisplaySeconds} setVerseDisplaySeconds={setVerseDisplaySeconds}
-          verseDelaySeconds={verseDelaySeconds} setVerseDelaySeconds={setVerseDelaySeconds}
-          soundEnabled={soundEnabled} setSoundEnabled={setSoundEnabled}
+          backgroundColor={backgroundColor} setBackgroundColor={setBackgroundColor}
+          narrationEnabled={narrationEnabled} setNarrationEnabled={setNarrationEnabled}
           onBack={() => setScreen(screenBeforeManage)}
         />
       )}
@@ -511,13 +491,13 @@ function App() {
           turn={turn}
           teamName={teamName}
           teamColor={teamColor}
+          teamIcon={teamIcon}
           scores={scores}
           selected={selected}
           showFeedback={showFeedback}
           timerSeconds={timerSeconds}
           verseDisplaySeconds={verseDisplaySeconds}
-          verseDelaySeconds={verseDelaySeconds}
-          soundEnabled={soundEnabled}
+          narrationEnabled={narrationEnabled}
           onAnswer={handleAnswer}
           onNext={nextQuestion}
         />
@@ -528,6 +508,7 @@ function App() {
           winner={winner}
           teamName={teamName}
           teamColor={teamColor}
+          teamIcon={teamIcon}
           scores={scores}
           total={questions.length}
           book={book}
@@ -542,7 +523,7 @@ function App() {
 /* ---------------------------------------------------------
    PANTALLA 1: Configurar equipos
 --------------------------------------------------------- */
-function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Color, setTeam1Color, team2Color, setTeam2Color, customCount, onManage, onSettings, onNext }) {
+function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Color, setTeam1Color, team1Icon, setTeam1Icon, team2Color, setTeam2Color, team2Icon, setTeam2Icon, customCount, onManage, onSettings, onNext }) {
   const canContinue = team1Name.trim() && team2Name.trim();
   return (
     <div style={styles.container} className="fade-in">
@@ -559,6 +540,8 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
           setName={setTeam1Name}
           color={team1Color}
           setColor={setTeam1Color}
+          icon={team1Icon}
+          setIcon={setTeam1Icon}
         />
         <div style={styles.vsWrap} className="font-display" aria-hidden="true">
           <Swords size={28} color="#B8892B" />
@@ -569,6 +552,8 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
           setName={setTeam2Name}
           color={team2Color}
           setColor={setTeam2Color}
+          icon={team2Icon}
+          setIcon={setTeam2Icon}
         />
       </div>
 
@@ -606,7 +591,7 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
   );
 }
 
-function TeamCard({ label, name, setName, color, setColor }) {
+function TeamCard({ label, name, setName, color, setColor, icon, setIcon }) {
   return (
     <div style={{ ...styles.card, borderColor: color }}>
       <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12 }}>
@@ -635,6 +620,10 @@ function TeamCard({ label, name, setName, color, setColor }) {
           />
         ))}
       </div>
+      <div className="font-ui" style={{ fontSize: 12, color: "#B8A98A", marginTop: 14, marginBottom: 8 }}>Icono del equipo</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {TEAM_ICONS.map((item) => <button key={item.id} type="button" title={item.label} aria-label={item.label} onClick={() => setIcon(item.id)} style={{ width: 34, height: 34, borderRadius: 8, background: "#1F3454", color: "#F5EFE0", fontSize: 18, cursor: "pointer", border: icon === item.id ? `2px solid ${color}` : "2px solid transparent" }}>{item.symbol}</button>)}
+      </div>
     </div>
   );
 }
@@ -642,7 +631,7 @@ function TeamCard({ label, name, setName, color, setColor }) {
 /* ---------------------------------------------------------
    PANTALLA: Configuración
 --------------------------------------------------------- */
-function SettingsScreen({ timerSeconds, setTimerSeconds, verseDisplaySeconds, setVerseDisplaySeconds, verseDelaySeconds, setVerseDelaySeconds, soundEnabled, setSoundEnabled, onBack }) {
+function SettingsScreen({ timerSeconds, setTimerSeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
   return (
     <div style={styles.container} className="fade-in">
       <button
@@ -704,54 +693,15 @@ function SettingsScreen({ timerSeconds, setTimerSeconds, verseDisplaySeconds, se
           Cuánto tiempo se muestra en pantalla el versículo al responder.
         </div>
       </div>
-
       <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
-        <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em" }}>
-            <Timer size={16} /> Pausa antes del versículo
-          </span>
-          <span className="font-display" style={{ color: "#F5EFE0", fontSize: 20 }}>{verseDelaySeconds}s</span>
-        </div>
-        <input
-          className="gold-range"
-          type="range"
-          min={0}
-          max={10}
-          step={1}
-          value={verseDelaySeconds}
-          onChange={(e) => setVerseDelaySeconds(Number(e.target.value))}
-          aria-label="Segundos de pausa entre ver la respuesta y el versículo"
-        />
-        <div className="font-ui" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#8FA0B8", marginTop: 6 }}>
-          <span>0s</span><span>10s</span>
-        </div>
-        <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 8 }}>
-          Cuánto se espera después de ver si la respuesta fue correcta, antes de mostrar el versículo.
-        </div>
+        <div className="font-ui" style={{ color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12 }}>Fondo de la aplicacion</div>
+        <input type="color" value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} aria-label="Color de fondo" style={{ width: "100%", height: 42, cursor: "pointer" }} />
       </div>
-
       <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
-        <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em" }}>
-            <Sparkles size={16} /> Sonido
-          </span>
-          <button
-            className="font-ui"
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            aria-pressed={soundEnabled}
-            style={{
-              padding: "6px 16px", borderRadius: 20, cursor: "pointer", fontSize: 13, fontWeight: 700,
-              background: soundEnabled ? "#B8892B" : "transparent",
-              color: soundEnabled ? "#16233D" : "#8FA0B8",
-              border: soundEnabled ? "1.5px solid #B8892B" : "1.5px solid #3A5578",
-            }}
-          >
-            {soundEnabled ? "Activado" : "Desactivado"}
-          </button>
-        </div>
-        <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 10 }}>
-          Reproduce una campanita al iniciar cada pregunta, y un pulso de suspenso en los últimos 5 segundos del reloj.
-        </div>
+        <label className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, color: "#F5EFE0", cursor: "pointer" }}>
+          <span><span style={{ color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 13 }}>Narrar preguntas y respuestas</span><br /><span style={{ color: "#8FA0B8", fontSize: 11.5 }}>Usa la voz en espanol mas natural disponible en el navegador.</span></span>
+          <input type="checkbox" checked={narrationEnabled} onChange={(e) => setNarrationEnabled(e.target.checked)} style={{ width: 20, height: 20 }} />
+        </label>
       </div>
     </div>
   );
@@ -775,12 +725,12 @@ function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books,
         {books.map((b) => {
           const isCustom = b.id === CUSTOM_BOOK_ID;
           return (
-            <button key={b.id} className="opt-btn" style={{ ...styles.bookCard, borderColor: isCustom ? "#B8892B" : "#3A5578" }} onClick={() => onSelect(b.id)}>
+            <button key={b.id} className="opt-btn" disabled={b.questions.length === 0} title={b.questions.length === 0 ? "Agrega preguntas a este libro antes de iniciar" : "Iniciar debate con este libro"} style={{ ...styles.bookCard, borderColor: isCustom ? "#B8892B" : "#3A5578", opacity: b.questions.length === 0 ? 0.58 : 1, cursor: b.questions.length === 0 ? "not-allowed" : "pointer" }} onClick={() => onSelect(b.id)}>
               <div style={styles.bookDropcap} className="font-display">{b.letter}</div>
               <div style={{ textAlign: "left" }}>
                 <div className="font-display" style={{ fontSize: 19, color: "#F5EFE0" }}>{b.name}</div>
                 <div className="font-ui" style={{ fontSize: 11.5, color: "#B8A98A", marginTop: 2 }}>{b.testament}</div>
-                <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 6 }}>{b.questions.length} preguntas</div>
+                <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 6 }}>{b.questions.length > 0 ? `${b.questions.length} preguntas` : "Sin preguntas - agrega algunas para jugar"}</div>
               </div>
               <BookOpen size={18} color="#B8892B" style={{ marginLeft: "auto", alignSelf: "center" }} />
             </button>
@@ -1168,7 +1118,7 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
 /* ---------------------------------------------------------
    PANTALLA 3: Juego
 --------------------------------------------------------- */
-function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, scores, selected, showFeedback, timerSeconds, verseDisplaySeconds, verseDelaySeconds, soundEnabled, onAnswer, onNext }) {
+function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, timerSeconds, verseDisplaySeconds, narrationEnabled, onAnswer, onNext }) {
   const activeColor = teamColor(turn);
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
   const [verseVisible, setVerseVisible] = useState(false);
@@ -1186,36 +1136,20 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
       onAnswer(-1); // se acabó el tiempo: cuenta como sin respuesta
       return;
     }
-    if (soundEnabled && timeLeft <= 5) playTick(timeLeft); // sonido de suspenso en los últimos 5 segundos
     const id = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
     return () => clearTimeout(id);
   }, [timeLeft, showFeedback]);
 
-  // Sonido breve cada vez que aparece una pregunta nueva
+  // Muestra el versículo como mensaje emergente al revelar la respuesta, con su propio conteo regresivo
   useEffect(() => {
-    if (soundEnabled) playChime();
-  }, [qIndex]);
-
-  // Tras revelar la respuesta, espera la pausa configurada y luego muestra
-  // el versículo como mensaje emergente, con su propio conteo regresivo.
-  useEffect(() => {
-    if (!(showFeedback && currentQ?.verseText)) {
-      setVerseVisible(false);
-      return;
-    }
-    const startTimer = setTimeout(() => {
+    if (showFeedback && currentQ?.verseText) {
       setVerseVisible(true);
       setVerseSecondsLeft(verseDisplaySeconds);
-    }, verseDelaySeconds * 1000);
-    return () => clearTimeout(startTimer);
-  }, [showFeedback, qIndex, currentQ, verseDelaySeconds, verseDisplaySeconds]);
-
-  // Oculta el versículo automáticamente al terminar su tiempo en pantalla
-  useEffect(() => {
-    if (!verseVisible) return;
-    const hideTimer = setTimeout(() => setVerseVisible(false), verseDisplaySeconds * 1000);
-    return () => clearTimeout(hideTimer);
-  }, [verseVisible, verseDisplaySeconds]);
+      const t = setTimeout(() => setVerseVisible(false), verseDisplaySeconds * 1000);
+      return () => clearTimeout(t);
+    }
+    setVerseVisible(false);
+  }, [showFeedback, qIndex, currentQ, verseDisplaySeconds]);
 
   useEffect(() => {
     if (!verseVisible || verseSecondsLeft <= 0) return;
@@ -1225,16 +1159,29 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
 
   const timedOut = showFeedback && selected === -1;
 
+  useEffect(() => {
+    if (!narrationEnabled || !window.speechSynthesis || !currentQ) return;
+    window.speechSynthesis.cancel();
+    const voices = window.speechSynthesis.getVoices();
+    const spanishVoice = voices.find((voice) => /^es(-|_)/i.test(voice.lang)) || voices.find((voice) => /spanish|espanol/i.test(voice.name));
+    const utterance = new SpeechSynthesisUtterance(`Pregunta: ${currentQ.q}. Posibles respuestas: ${currentQ.options.map((option, index) => `${LETTERS[index]}: ${option}`).join('. ')}.`);
+    utterance.lang = spanishVoice?.lang || "es-ES";
+    utterance.voice = spanishVoice || null;
+    utterance.rate = 0.92;
+    window.speechSynthesis.speak(utterance);
+    return () => window.speechSynthesis.cancel();
+  }, [qIndex, narrationEnabled]);
+
   return (
     <div style={styles.container} className="fade-in">
       {/* Marcador */}
       <div style={styles.scoreBar}>
-        <ScorePill name={teamName(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" />
+        <ScorePill name={teamName(1)} icon={teamIcon(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" />
         <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(10px, 2.8vw, 12.5px)", flex: "0 1 auto", minWidth: 0, padding: "0 4px" }}>
           <div style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>{book?.name}</div>
           <div style={{ whiteSpace: "nowrap" }}>Pregunta {qIndex + 1} de {total}</div>
         </div>
-        <ScorePill name={teamName(2)} color={teamColor(2)} score={scores[2]} active={turn === 2} align="right" />
+        <ScorePill name={teamName(2)} icon={teamIcon(2)} color={teamColor(2)} score={scores[2]} active={turn === 2} align="right" />
       </div>
 
       {/* Barra de progreso */}
@@ -1243,9 +1190,9 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
       </div>
 
       {/* Turno + temporizador */}
-      <div key={qIndex} className="fade-in" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, margin: "26px 0 14px" }}>
-        <TimerRing secondsLeft={timeLeft} totalSeconds={timerSeconds} size={128} strokeWidth={9} />
-        <div className="font-ui" style={{ fontSize: 15, color: "#F5EFE0" }}>
+      <div key={qIndex} className="fade-in" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, margin: "22px 0 10px" }}>
+        <TimerRing secondsLeft={showFeedback ? timeLeft : timeLeft} totalSeconds={timerSeconds} />
+        <div className="font-ui" style={{ fontSize: 14, color: "#F5EFE0" }}>
           Turno de <span style={{ color: activeColor, fontWeight: 700 }}>{teamName(turn)}</span>
         </div>
       </div>
@@ -1259,37 +1206,9 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
         )}
         <p className="font-body" style={styles.questionText}>{currentQ.q}</p>
 
-        {showFeedback && (
-          <div className="fade-in" style={{ marginTop: 14 }}>
-            {timedOut ? (
-              <div className="font-ui" style={{ color: "#C0405A", fontSize: 13.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                ⏱ Tiempo agotado — sin punto para {teamName(turn)}
-              </div>
-            ) : (
-              <div
-                className="font-display"
-                style={{
-                  fontSize: "clamp(22px, 6vw, 28px)", fontWeight: 700,
-                  color: selected === currentQ.correct ? "#4CA98D" : "#E0637A",
-                }}
-              >
-                {selected === currentQ.correct ? "¡Correcto!" : "Incorrecto"}
-              </div>
-            )}
-
-            {verseVisible && currentQ.verseText && (
-              <div key={"verse-inline" + qIndex} className="verse-inline fade-in" style={styles.verseInline}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                  <TimerRing secondsLeft={verseSecondsLeft} totalSeconds={verseDisplaySeconds} size={40} strokeWidth={4} />
-                  <div className="font-display" style={{ fontSize: 14, color: "#D4AF5A", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                    {book?.name} {currentQ.chapter}{currentQ.chapter && currentQ.verse ? ":" : ""}{currentQ.verse}
-                  </div>
-                </div>
-                <p className="font-body" style={{ margin: 0, color: "#F5EFE0", fontSize: "clamp(16px, 3.6vw, 19px)", fontStyle: "italic", lineHeight: 1.5 }}>
-                  "{currentQ.verseText}"
-                </p>
-              </div>
-            )}
+        {timedOut && (
+          <div className="font-ui" style={{ marginTop: 10, color: "#C0405A", fontSize: 13.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            ⏱ Tiempo agotado — sin punto para {teamName(turn)}
           </div>
         )}
 
@@ -1338,6 +1257,11 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
         </div>
 
         {showFeedback && (
+          <div className="font-display fade-in" style={{ marginTop: 20, textAlign: "center", color: selected === currentQ.correct ? "#63C7A7" : "#F08A9D", fontSize: 22, letterSpacing: "0.1em" }}>
+            {selected === currentQ.correct ? "Correcto" : "Incorrecto"}
+          </div>
+        )}
+        {showFeedback && (
           <div style={{ marginTop: 22, textAlign: "center" }} className="fade-in">
             <button className="font-ui" style={styles.primaryBtn} onClick={onNext}>
               {qIndex + 1 < total ? "Siguiente pregunta" : "Ver resultados"}
@@ -1346,11 +1270,29 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
           </div>
         )}
       </div>
+
+      {/* Mensaje emergente con el texto del versículo */}
+      {verseVisible && currentQ.verseText && (
+        <>
+          <div key={"verse-overlay" + qIndex} className="verse-toast-overlay" style={{ ...styles.verseToastOverlay, animationDuration: `${verseDisplaySeconds}s` }} aria-hidden="true" />
+          <div key={"verse-toast" + qIndex} className="verse-toast-card" style={{ ...styles.verseToast, animationDuration: `${verseDisplaySeconds}s` }} role="status" aria-live="polite">
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <TimerRing secondsLeft={verseSecondsLeft} totalSeconds={verseDisplaySeconds} size={40} />
+            </div>
+            <div className="font-display" style={{ fontSize: 20, color: "#D4AF5A", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 10, marginBottom: 16, textAlign: "center" }}>
+              {book?.name} {currentQ.chapter}{currentQ.chapter && currentQ.verse ? ":" : ""}{currentQ.verse}
+            </div>
+            <p className="font-body" style={{ margin: 0, color: "#F5EFE0", fontSize: "clamp(20px, 4.2vw, 27px)", fontStyle: "italic", lineHeight: 1.5, textAlign: "center" }}>
+              "{currentQ.verseText}"
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function ScorePill({ name, color, score, active, align }) {
+function ScorePill({ name, icon, color, score, active, align }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: "clamp(6px, 2vw, 10px)", minWidth: 0,
@@ -1366,7 +1308,7 @@ function ScorePill({ name, color, score, active, align }) {
         {score}
       </div>
       <div className="font-ui" style={{ fontSize: "clamp(11px, 3vw, 13.5px)", color: "#F5EFE0", fontWeight: 600, maxWidth: "clamp(50px, 24vw, 110px)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {name}
+        <span aria-hidden="true">{icon.symbol} </span>{name}<span style={{ display: "block", color: "#B8A98A", fontSize: "0.78em", marginTop: 2 }}>Puntos acumulados: {score}</span>
       </div>
     </div>
   );
@@ -1550,11 +1492,16 @@ const styles = {
     background: "transparent", color: "#B8A98A", border: "1.5px solid #3A5578",
   },
   tabBtnActive: { background: "#B8892B", color: "#16233D", border: "1.5px solid #B8892B" },
-  verseInline: {
-    marginTop: 14,
-    background: "rgba(184,137,43,0.08)",
-    borderLeft: "3px solid #B8892B", borderRadius: 8,
-    padding: "14px 16px",
+  verseToast: {
+    position: "fixed", left: "50%", top: "50%", transform: "translate(-50%, -50%)",
+    width: "min(92vw, 620px)", maxHeight: "88vh", overflowY: "auto", zIndex: 60,
+    background: "linear-gradient(180deg, #1A2C48 0%, #12203A 100%)",
+    border: "2px solid #B8892B", borderRadius: 18, padding: "clamp(20px, 6vw, 34px) clamp(18px, 6vw, 36px)",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.55)",
+  },
+  verseToastOverlay: {
+    position: "fixed", inset: 0, zIndex: 55,
+    background: "rgba(10,16,28,0.72)",
   },
 };
 
