@@ -147,6 +147,31 @@ function playChime() {
   }
 }
 
+function playTick(secondsLeft) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!__audioCtx) __audioCtx = new Ctx();
+    if (__audioCtx.state === "suspended") __audioCtx.resume();
+    const now = __audioCtx.currentTime;
+    // El tono sube levemente cada segundo restante, para dar sensación de suspenso creciente
+    const freq = 300 + (5 - secondsLeft) * 55;
+    const osc = __audioCtx.createOscillator();
+    const gain = __audioCtx.createGain();
+    osc.type = "square";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.11, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    osc.connect(gain);
+    gain.connect(__audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.14);
+  } catch (e) {
+    // Web Audio no disponible: se omite el sonido sin interrumpir el juego
+  }
+}
+
 function seedLibrary() {
   return [
     ...BOOKS.map((b) => ({ ...b, questions: b.questions.map((q) => ({ ...q, options: [...q.options] })) })),
@@ -396,24 +421,12 @@ export default function App() {
           100% { transform: translate(var(--drift), 105vh) rotate(var(--rotate)); opacity: 0.85; }
         }
         @media (prefers-reduced-motion: reduce) { .confetti-piece { display: none; } }
-        .verse-toast-overlay { animation: verseOverlay 5s ease forwards; }
-        @keyframes verseOverlay {
-          0% { opacity: 0; }
-          6% { opacity: 1; }
-          85% { opacity: 1; }
-          100% { opacity: 0; }
+        .verse-inline { animation: verseIn 0.4s ease both; }
+        @keyframes verseIn {
+          0% { opacity: 0; transform: translateY(-6px); max-height: 0; }
+          100% { opacity: 1; transform: translateY(0); max-height: 400px; }
         }
-        .verse-toast-card { animation: verseCard 5s ease forwards; }
-        @keyframes verseCard {
-          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.94); }
-          6% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-          85% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-          100% { opacity: 0; transform: translate(-50%, -50%) scale(0.97); }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .verse-toast-overlay, .verse-toast-card { animation: none !important; opacity: 1 !important; }
-          .verse-toast-card { transform: translate(-50%, -50%) !important; }
-        }
+        @media (prefers-reduced-motion: reduce) { .verse-inline { animation: none !important; } }
         input[type="range"].gold-range { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: #3A5578; border-radius: 4px; outline: none; }
         input[type="range"].gold-range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #B8892B; border: 2px solid #F5EFE0; cursor: pointer; margin-top: -1px; }
         input[type="range"].gold-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #B8892B; border: 2px solid #F5EFE0; cursor: pointer; }
@@ -695,7 +708,7 @@ function SettingsScreen({ timerSeconds, setTimerSeconds, verseDisplaySeconds, se
       <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
         <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em" }}>
-            <Sparkles size={16} /> Sonido entre preguntas
+            <Sparkles size={16} /> Sonido
           </span>
           <button
             className="font-ui"
@@ -712,7 +725,7 @@ function SettingsScreen({ timerSeconds, setTimerSeconds, verseDisplaySeconds, se
           </button>
         </div>
         <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 10 }}>
-          Reproduce una campanita breve cada vez que aparece una pregunta nueva.
+          Reproduce una campanita al iniciar cada pregunta, y un pulso de suspenso en los últimos 5 segundos del reloj.
         </div>
       </div>
     </div>
@@ -1148,6 +1161,7 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
       onAnswer(-1); // se acabó el tiempo: cuenta como sin respuesta
       return;
     }
+    if (soundEnabled && timeLeft <= 5) playTick(timeLeft); // sonido de suspenso en los últimos 5 segundos
     const id = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
     return () => clearTimeout(id);
   }, [timeLeft, showFeedback]);
@@ -1220,9 +1234,37 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
         )}
         <p className="font-body" style={styles.questionText}>{currentQ.q}</p>
 
-        {timedOut && (
-          <div className="font-ui" style={{ marginTop: 10, color: "#C0405A", fontSize: 13.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            ⏱ Tiempo agotado — sin punto para {teamName(turn)}
+        {showFeedback && (
+          <div className="fade-in" style={{ marginTop: 14 }}>
+            {timedOut ? (
+              <div className="font-ui" style={{ color: "#C0405A", fontSize: 13.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                ⏱ Tiempo agotado — sin punto para {teamName(turn)}
+              </div>
+            ) : (
+              <div
+                className="font-display"
+                style={{
+                  fontSize: "clamp(22px, 6vw, 28px)", fontWeight: 700,
+                  color: selected === currentQ.correct ? "#4CA98D" : "#E0637A",
+                }}
+              >
+                {selected === currentQ.correct ? "¡Correcto!" : "Incorrecto"}
+              </div>
+            )}
+
+            {verseVisible && currentQ.verseText && (
+              <div key={"verse-inline" + qIndex} className="verse-inline fade-in" style={styles.verseInline}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                  <TimerRing secondsLeft={verseSecondsLeft} totalSeconds={verseDisplaySeconds} size={40} strokeWidth={4} />
+                  <div className="font-display" style={{ fontSize: 14, color: "#D4AF5A", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    {book?.name} {currentQ.chapter}{currentQ.chapter && currentQ.verse ? ":" : ""}{currentQ.verse}
+                  </div>
+                </div>
+                <p className="font-body" style={{ margin: 0, color: "#F5EFE0", fontSize: "clamp(16px, 3.6vw, 19px)", fontStyle: "italic", lineHeight: 1.5 }}>
+                  "{currentQ.verseText}"
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -1279,24 +1321,6 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
           </div>
         )}
       </div>
-
-      {/* Mensaje emergente con el texto del versículo */}
-      {verseVisible && currentQ.verseText && (
-        <>
-          <div key={"verse-overlay" + qIndex} className="verse-toast-overlay" style={{ ...styles.verseToastOverlay, animationDuration: `${verseDisplaySeconds}s` }} aria-hidden="true" />
-          <div key={"verse-toast" + qIndex} className="verse-toast-card" style={{ ...styles.verseToast, animationDuration: `${verseDisplaySeconds}s` }} role="status" aria-live="polite">
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <TimerRing secondsLeft={verseSecondsLeft} totalSeconds={verseDisplaySeconds} size={56} strokeWidth={5} />
-            </div>
-            <div className="font-display" style={{ fontSize: 20, color: "#D4AF5A", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 10, marginBottom: 16, textAlign: "center" }}>
-              {book?.name} {currentQ.chapter}{currentQ.chapter && currentQ.verse ? ":" : ""}{currentQ.verse}
-            </div>
-            <p className="font-body" style={{ margin: 0, color: "#F5EFE0", fontSize: "clamp(20px, 4.2vw, 27px)", fontStyle: "italic", lineHeight: 1.5, textAlign: "center" }}>
-              "{currentQ.verseText}"
-            </p>
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -1501,15 +1525,10 @@ const styles = {
     background: "transparent", color: "#B8A98A", border: "1.5px solid #3A5578",
   },
   tabBtnActive: { background: "#B8892B", color: "#16233D", border: "1.5px solid #B8892B" },
-  verseToast: {
-    position: "fixed", left: "50%", top: "50%", transform: "translate(-50%, -50%)",
-    width: "min(92vw, 620px)", maxHeight: "88vh", overflowY: "auto", zIndex: 60,
-    background: "linear-gradient(180deg, #1A2C48 0%, #12203A 100%)",
-    border: "2px solid #B8892B", borderRadius: 18, padding: "clamp(20px, 6vw, 34px) clamp(18px, 6vw, 36px)",
-    boxShadow: "0 20px 60px rgba(0,0,0,0.55)",
-  },
-  verseToastOverlay: {
-    position: "fixed", inset: 0, zIndex: 55,
-    background: "rgba(10,16,28,0.72)",
+  verseInline: {
+    marginTop: 14,
+    background: "rgba(184,137,43,0.08)",
+    borderLeft: "3px solid #B8892B", borderRadius: 8,
+    padding: "14px 16px",
   },
 };
