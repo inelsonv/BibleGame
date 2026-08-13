@@ -1,30 +1,5 @@
-const { useState, useMemo, useEffect } = React;
-
-/* ---------------------------------------------------------
-   ÍCONOS (SVG propios, sin dependencias externas)
---------------------------------------------------------- */
-function Icon({ children, size = 20, color = "currentColor", style }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
-      {children}
-    </svg>
-  );
-}
-const BookOpen = (p) => <Icon {...p}><path d="M2 5c2-1.5 5-2 8-1v14c-3-1-6-.5-8 1V5Z" /><path d="M22 5c-2-1.5-5-2-8-1v14c3-1 6-.5 8 1V5Z" /></Icon>;
-const Users = (p) => <Icon {...p}><circle cx="9" cy="8" r="3.2" /><path d="M2.5 19c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" /><circle cx="17" cy="9" r="2.6" /><path d="M15 13.6c2.9.3 5 2.2 5 5.4" /></Icon>;
-const Swords = (p) => <Icon {...p}><path d="M4 20 18 6" /><path d="M14 2h6v6" /><path d="M20 4 4 20" /><path d="M10 22H4v-6" /></Icon>;
-const Crown = (p) => <Icon {...p}><path d="M3 8l4 4 5-7 5 7 4-4-2 10H5L3 8Z" /><path d="M5 20h14" /></Icon>;
-const Check = (p) => <Icon {...p}><path d="M4 12l5 5L20 6" /></Icon>;
-const X = (p) => <Icon {...p}><path d="M5 5l14 14" /><path d="M19 5 5 19" /></Icon>;
-const RotateCcw = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></Icon>;
-const ChevronRight = (p) => <Icon {...p}><path d="M9 5l7 7-7 7" /></Icon>;
-const Sparkles = (p) => <Icon {...p}><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z" /><path d="M5 17l.8 2.2L8 20l-2.2.8L5 23l-.8-2.2L2 20l2.2-.8L5 17Z" /></Icon>;
-const Timer = (p) => <Icon {...p}><circle cx="12" cy="13" r="8" /><path d="M12 9v4l3 2" /><path d="M9 2h6" /></Icon>;
-const Plus = (p) => <Icon {...p}><path d="M12 5v14" /><path d="M5 12h14" /></Icon>;
-const Trash2 = (p) => <Icon {...p}><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6 7l1 13h10l1-13" /><path d="M10 11v6" /><path d="M14 11v6" /></Icon>;
-const ArrowLeft = (p) => <Icon {...p}><path d="M19 12H5" /><path d="M11 18l-6-6 6-6" /></Icon>;
-const PenLine = (p) => <Icon {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" /></Icon>;
-const Settings = (p) => <Icon {...p}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.6 1Z" /></Icon>;
+import React, { useState, useMemo, useEffect } from "react";
+import { BookOpen, Users, Swords, Crown, Check, X, RotateCcw, ChevronRight, Sparkles, Timer, Plus, Trash2, ArrowLeft, PenLine, Settings } from "lucide-react";
 
 /* ---------------------------------------------------------
    DATOS: banco de preguntas por libro bíblico
@@ -223,7 +198,7 @@ function TimerRing({ secondsLeft, totalSeconds, size = 60 }) {
 /* ---------------------------------------------------------
    APP
 --------------------------------------------------------- */
-function App() {
+export default function App() {
   const [screen, setScreen] = useState("setup");
   const [team1Name, setTeam1Name] = useState("");
   const [team2Name, setTeam2Name] = useState("");
@@ -1437,6 +1412,3 @@ const styles = {
     background: "rgba(10,16,28,0.72)",
   },
 };
-
-const rootEl = document.getElementById("root");
-ReactDOM.createRoot(rootEl).render(<App />);
