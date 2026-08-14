@@ -151,22 +151,56 @@ const LETTERS = ["A", "B", "C"];
 const CUSTOM_BOOK_ID = "personalizado";
 const LIBRARY_STORAGE_KEY = "duelo-biblico:biblioteca";
 
+// Niveles de dificultad de cada pregunta
+const DIFFICULTIES = [
+  { level: 1, label: "Fácil", color: "#1F6F5C" },
+  { level: 2, label: "Intermedio", color: "#B8892B" },
+  { level: 3, label: "Difícil", color: "#8B2E3F" },
+];
+function difficultyInfo(level) {
+  return DIFFICULTIES.find((d) => d.level === level) || DIFFICULTIES[0];
+}
+
+// Asegura que cada pregunta de la biblioteca tenga un "id" único y correlativo
+// (como si fuera su número de ficha) y un nivel de "difficulty" (1-3).
+// Las preguntas que ya tienen id conservan su número; solo se numeran las que
+// todavía no lo tienen, continuando la numeración donde se quedó.
+function ensureQuestionMeta(library) {
+  let nextId = 1;
+  library.forEach((b) => b.questions.forEach((q) => {
+    if (typeof q.id === "number" && q.id >= nextId) nextId = q.id + 1;
+  }));
+  return library.map((b) => ({
+    ...b,
+    questions: b.questions.map((q) => {
+      const withId = typeof q.id === "number" ? q : { ...q, id: nextId++ };
+      return typeof withId.difficulty === "number" ? withId : { ...withId, difficulty: 1 };
+    }),
+  }));
+}
+
+// Calcula el próximo id disponible (número siguiente) para toda la biblioteca
+function nextQuestionId(library) {
+  return library.reduce((max, b) => b.questions.reduce((m, q) => Math.max(m, q.id || 0), max), 0) + 1;
+}
+
 function seedLibrary() {
   const baseById = new Map(BOOKS.map((b) => [b.id, b]));
-  return [
+  return ensureQuestionMeta([
     ...BIBLE_BOOKS.map(([id, name, testament]) => {
       const base = baseById.get(id);
       return base ? { ...base, questions: base.questions.map((q) => ({ ...q, options: [...q.options] })) } : { id, name, testament, letter: name.slice(0, 1), questions: [] };
     }),
     { id: CUSTOM_BOOK_ID, name: "Mis preguntas", testament: "Personalizado", letter: "+", questions: [] },
-  ];
+  ]);
 }
 function normalizeLibrary(savedLibrary) {
   const savedById = new Map(savedLibrary.map((book) => [book.id, book]));
-  return seedLibrary().map((base) => {
+  const merged = seedLibrary().map((base) => {
     const saved = savedById.get(base.id);
     return saved ? { ...base, ...saved, questions: Array.isArray(saved.questions) ? saved.questions : base.questions } : base;
   });
+  return ensureQuestionMeta(merged);
 }
 
 function shuffle(arr) {
@@ -313,7 +347,8 @@ function App() {
   }
 
   function addQuestionToBook(targetBookId, question) {
-    persistLibrary(library.map((b) => (b.id === targetBookId ? { ...b, questions: [...b.questions, question] } : b)));
+    const id = nextQuestionId(library);
+    persistLibrary(library.map((b) => (b.id === targetBookId ? { ...b, questions: [...b.questions, { ...question, id }] } : b)));
   }
 
   function updateQuestionInBook(targetBookId, qIdx, updatedQuestion) {
@@ -805,8 +840,9 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
   const [chapter, setChapter] = useState("");
   const [verse, setVerse] = useState("");
   const [verseText, setVerseText] = useState("");
+  const [difficulty, setDifficulty] = useState(1);
   const [formError, setFormError] = useState("");
-  const [editState, setEditState] = useState(null); // { index, qText, opts, correct, chapter, verse, verseText }
+  const [editState, setEditState] = useState(null); // { index, qText, opts, correct, chapter, verse, verseText, difficulty }
 
   const selectedBook = library.find((b) => b.id === selectedBookId) || library[0];
   const canAdd = qText.trim() && opts.every((o) => o.trim()) && chapter.trim() && verse.trim() && verseText.trim();
@@ -822,6 +858,7 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
     setChapter("");
     setVerse("");
     setVerseText("");
+    setDifficulty(1);
     setFormError("");
   }
 
@@ -837,12 +874,13 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
       chapter: chapter.trim(),
       verse: verse.trim(),
       verseText: verseText.trim(),
+      difficulty,
     });
     resetForm();
   }
 
   function startEdit(i, q) {
-    setEditState({ index: i, qText: q.q, opts: [...q.options], correct: q.correct, chapter: q.chapter || "", verse: q.verse || "", verseText: q.verseText || "" });
+    setEditState({ index: i, id: q.id, qText: q.q, opts: [...q.options], correct: q.correct, chapter: q.chapter || "", verse: q.verse || "", verseText: q.verseText || "", difficulty: q.difficulty || 1 });
   }
 
   function updateEditOpt(i, val) {
@@ -852,12 +890,14 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
   function saveEdit() {
     if (!editState.qText.trim() || !editState.opts.every((o) => o.trim()) || !editState.chapter.trim() || !editState.verse.trim() || !editState.verseText.trim()) return;
     onUpdateQuestion(selectedBook.id, editState.index, {
+      id: editState.id,
       q: editState.qText.trim(),
       options: editState.opts.map((o) => o.trim()),
       correct: editState.correct,
       chapter: editState.chapter.trim(),
       verse: editState.verse.trim(),
       verseText: editState.verseText.trim(),
+      difficulty: editState.difficulty,
     });
     setEditState(null);
   }
@@ -1002,6 +1042,27 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
           Toca la letra de la opción correcta.
         </div>
 
+        <label className="font-ui" style={{ fontSize: 12.5, color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 18, display: "block" }}>Dificultad</label>
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          {DIFFICULTIES.map((d) => (
+            <button
+              key={d.level}
+              type="button"
+              className="font-ui"
+              onClick={() => setDifficulty(d.level)}
+              aria-pressed={difficulty === d.level}
+              style={{
+                flex: 1, padding: "8px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13.5, fontWeight: 700,
+                background: difficulty === d.level ? d.color : "rgba(255,255,255,0.04)",
+                color: difficulty === d.level ? "#F5EFE0" : "#B8A98A",
+                border: difficulty === d.level ? `1.5px solid ${d.color}` : "1.5px solid #3A5578",
+              }}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+
         {formError && (
           <div className="font-ui" style={{ marginTop: 12, color: "#C0405A", fontSize: 13 }}>{formError}</div>
         )}
@@ -1102,6 +1163,26 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
                         </div>
                       ))}
                     </div>
+                    <label className="font-ui" style={{ fontSize: 11, color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 12, display: "block" }}>Dificultad</label>
+                    <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                      {DIFFICULTIES.map((d) => (
+                        <button
+                          key={d.level}
+                          type="button"
+                          className="font-ui"
+                          onClick={() => setEditState((prev) => ({ ...prev, difficulty: d.level }))}
+                          aria-pressed={editState.difficulty === d.level}
+                          style={{
+                            flex: 1, padding: "7px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700,
+                            background: editState.difficulty === d.level ? d.color : "rgba(255,255,255,0.04)",
+                            color: editState.difficulty === d.level ? "#F5EFE0" : "#B8A98A",
+                            border: editState.difficulty === d.level ? `1.5px solid ${d.color}` : "1.5px solid #3A5578",
+                          }}
+                        >
+                          {d.label}
+                        </button>
+                      ))}
+                    </div>
                     <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
                       <button className="font-ui" style={styles.secondaryBtn} onClick={() => setEditState(null)}>Cancelar</button>
                       <button className="font-ui" style={styles.primaryBtn} onClick={saveEdit}>Guardar cambios</button>
@@ -1112,6 +1193,15 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
               return (
                 <div key={i} style={{ ...styles.card, maxWidth: "none", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                   <div>
+                    <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 11.5, color: "#8FA0B8" }}>#{q.id}</span>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
+                        color: difficultyInfo(q.difficulty).color, border: `1px solid ${difficultyInfo(q.difficulty).color}`,
+                      }}>
+                        {difficultyInfo(q.difficulty).label}
+                      </span>
+                    </div>
                     <p className="font-body" style={{ color: "#F5EFE0", fontSize: 16, margin: 0 }}>{q.q}</p>
                     {(q.chapter || q.verse) && (
                       <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 4 }}>
