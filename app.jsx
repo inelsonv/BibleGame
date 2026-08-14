@@ -1498,20 +1498,20 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
 function ScorePill({ name, icon, color, score, active, align }) {
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: "clamp(8px, 2.5vw, 12px)", minWidth: 0,
+      display: "flex", alignItems: "center", gap: "clamp(8px, 2.5vw, 14px)", minWidth: 0,
       flexDirection: align === "right" ? "row-reverse" : "row",
       opacity: active ? 1 : 0.55, transition: "opacity 0.2s ease",
     }}>
       <div style={{
-        width: "clamp(40px, 12vw, 56px)", height: "clamp(40px, 12vw, 56px)", borderRadius: "50%", background: color,
+        width: "clamp(48px, 15vw, 68px)", height: "clamp(48px, 15vw, 68px)", borderRadius: "50%", background: color,
         display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
-        fontFamily: "'Cinzel', serif", fontWeight: 700, color: "#F5EFE0", fontSize: "clamp(17px, 5vw, 24px)",
+        fontFamily: "'Cinzel', serif", fontWeight: 700, color: "#F5EFE0", fontSize: "clamp(20px, 6vw, 29px)",
         boxShadow: active ? `0 0 0 3px #16233D, 0 0 0 5px ${color}` : "none",
       }}>
         {score}
       </div>
-      <div className="font-ui" style={{ fontSize: "clamp(15px, 4.5vw, 20px)", color: "#F5EFE0", fontWeight: 700, maxWidth: "clamp(60px, 28vw, 130px)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        <span aria-hidden="true">{icon.symbol} </span>{name}<span style={{ display: "block", color: "#B8892B", fontSize: "0.6em", fontWeight: 700, marginTop: 2 }}>Puntos: {score}</span>
+      <div className="font-ui" style={{ fontSize: "clamp(17px, 5.5vw, 24px)", color: "#F5EFE0", fontWeight: 700, lineHeight: 1.15, maxWidth: "clamp(70px, 30vw, 150px)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span aria-hidden="true">{icon.symbol} </span>{name}<span style={{ display: "block", color: "#B8892B", fontSize: "0.55em", fontWeight: 700, marginTop: 2 }}>Puntos: {score}</span>
       </div>
     </div>
   );
