@@ -255,6 +255,7 @@ function App() {
   const [backgroundColor, setBackgroundColor] = useState("#0F1A2E");
   const [narrationEnabled, setNarrationEnabled] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(20);
+  const [feedbackDisplaySeconds, setFeedbackDisplaySeconds] = useState(3);
   const [verseDisplaySeconds, setVerseDisplaySeconds] = useState(5);
   const [bookId, setBookId] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -475,6 +476,7 @@ function App() {
       {screen === "settings" && (
         <SettingsScreen
           timerSeconds={timerSeconds} setTimerSeconds={setTimerSeconds}
+          feedbackDisplaySeconds={feedbackDisplaySeconds} setFeedbackDisplaySeconds={setFeedbackDisplaySeconds}
           verseDisplaySeconds={verseDisplaySeconds} setVerseDisplaySeconds={setVerseDisplaySeconds}
           backgroundColor={backgroundColor} setBackgroundColor={setBackgroundColor}
           narrationEnabled={narrationEnabled} setNarrationEnabled={setNarrationEnabled}
@@ -496,6 +498,7 @@ function App() {
           selected={selected}
           showFeedback={showFeedback}
           timerSeconds={timerSeconds}
+          feedbackDisplaySeconds={feedbackDisplaySeconds}
           verseDisplaySeconds={verseDisplaySeconds}
           narrationEnabled={narrationEnabled}
           onAnswer={handleAnswer}
@@ -631,7 +634,7 @@ function TeamCard({ label, name, setName, color, setColor, icon, setIcon }) {
 /* ---------------------------------------------------------
    PANTALLA: Configuración
 --------------------------------------------------------- */
-function SettingsScreen({ timerSeconds, setTimerSeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
+function SettingsScreen({ timerSeconds, setTimerSeconds, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
   return (
     <div style={styles.container} className="fade-in">
       <button
@@ -666,6 +669,31 @@ function SettingsScreen({ timerSeconds, setTimerSeconds, verseDisplaySeconds, se
         />
         <div className="font-ui" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#8FA0B8", marginTop: 6 }}>
           <span>5s</span><span>60s</span>
+        </div>
+      </div>
+
+      <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
+        <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+            <Check size={16} /> Tiempo para ver la respuesta
+          </span>
+          <span className="font-display" style={{ color: "#F5EFE0", fontSize: 20 }}>{feedbackDisplaySeconds}s</span>
+        </div>
+        <input
+          className="gold-range"
+          type="range"
+          min={1}
+          max={15}
+          step={1}
+          value={feedbackDisplaySeconds}
+          onChange={(e) => setFeedbackDisplaySeconds(Number(e.target.value))}
+          aria-label="Segundos para mostrar si la respuesta fue correcta o incorrecta"
+        />
+        <div className="font-ui" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#8FA0B8", marginTop: 6 }}>
+          <span>1s</span><span>15s</span>
+        </div>
+        <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 8 }}>
+          El versículo aparecerá después de este tiempo.
         </div>
       </div>
 
@@ -1118,7 +1146,7 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
 /* ---------------------------------------------------------
    PANTALLA 3: Juego
 --------------------------------------------------------- */
-function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, timerSeconds, verseDisplaySeconds, narrationEnabled, onAnswer, onNext }) {
+function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, timerSeconds, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, onAnswer, onNext }) {
   const activeColor = teamColor(turn);
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
   const [verseVisible, setVerseVisible] = useState(false);
@@ -1140,16 +1168,22 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
     return () => clearTimeout(id);
   }, [timeLeft, showFeedback]);
 
-  // Muestra el versículo como mensaje emergente al revelar la respuesta, con su propio conteo regresivo
+  // Primero muestra el resultado y luego, tras el intervalo configurado, el versículo.
   useEffect(() => {
     if (showFeedback && currentQ?.verseText) {
-      setVerseVisible(true);
-      setVerseSecondsLeft(verseDisplaySeconds);
-      const t = setTimeout(() => setVerseVisible(false), verseDisplaySeconds * 1000);
-      return () => clearTimeout(t);
+      setVerseVisible(false);
+      const showTimer = setTimeout(() => {
+        setVerseSecondsLeft(verseDisplaySeconds);
+        setVerseVisible(true);
+      }, feedbackDisplaySeconds * 1000);
+      const hideTimer = setTimeout(() => setVerseVisible(false), (feedbackDisplaySeconds + verseDisplaySeconds) * 1000);
+      return () => {
+        clearTimeout(showTimer);
+        clearTimeout(hideTimer);
+      };
     }
     setVerseVisible(false);
-  }, [showFeedback, qIndex, currentQ, verseDisplaySeconds]);
+  }, [showFeedback, qIndex, currentQ, feedbackDisplaySeconds, verseDisplaySeconds]);
 
   useEffect(() => {
     if (!verseVisible || verseSecondsLeft <= 0) return;
