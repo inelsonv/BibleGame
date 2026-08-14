@@ -1380,9 +1380,9 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
       {/* Marcador */}
       <div style={styles.scoreBar}>
         <ScorePill name={teamName(1)} icon={teamIcon(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" />
-        <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(10px, 2.8vw, 12.5px)", flex: "0 1 auto", minWidth: 0, padding: "0 4px" }}>
-          <div style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>{book?.name}</div>
-          <div style={{ whiteSpace: "nowrap" }}>Pregunta {qIndex + 1} de {total}</div>
+        <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(9px, 2.4vw, 11.5px)", flex: "0 1 auto", minWidth: 0, padding: "0 4px" }}>
+          <div style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>{book?.name}</div>
+          <div>Pregunta {qIndex + 1} de {total}</div>
         </div>
         <ScorePill name={teamName(2)} icon={teamIcon(2)} color={teamColor(2)} score={scores[2]} active={turn === 2} align="right" />
       </div>
@@ -1498,20 +1498,20 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
 function ScorePill({ name, icon, color, score, active, align }) {
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: "clamp(8px, 2.5vw, 14px)", minWidth: 0,
+      display: "flex", alignItems: "center", gap: "clamp(10px, 3vw, 16px)", minWidth: 0, flexShrink: 0,
       flexDirection: align === "right" ? "row-reverse" : "row",
       opacity: active ? 1 : 0.55, transition: "opacity 0.2s ease",
     }}>
       <div style={{
-        width: "clamp(48px, 15vw, 68px)", height: "clamp(48px, 15vw, 68px)", borderRadius: "50%", background: color,
+        width: "clamp(58px, 19vw, 88px)", height: "clamp(58px, 19vw, 88px)", borderRadius: "50%", background: color,
         display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
-        fontFamily: "'Cinzel', serif", fontWeight: 700, color: "#F5EFE0", fontSize: "clamp(20px, 6vw, 29px)",
+        fontFamily: "'Cinzel', serif", fontWeight: 800, color: "#F5EFE0", fontSize: "clamp(26px, 8vw, 38px)",
         boxShadow: active ? `0 0 0 3px #16233D, 0 0 0 5px ${color}` : "none",
       }}>
         {score}
       </div>
-      <div className="font-ui" style={{ fontSize: "clamp(17px, 5.5vw, 24px)", color: "#F5EFE0", fontWeight: 700, lineHeight: 1.15, maxWidth: "clamp(70px, 30vw, 150px)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        <span aria-hidden="true">{icon.symbol} </span>{name}<span style={{ display: "block", color: "#B8892B", fontSize: "0.55em", fontWeight: 700, marginTop: 2 }}>Puntos: {score}</span>
+      <div className="font-ui" style={{ fontSize: "clamp(21px, 7.5vw, 32px)", color: "#F5EFE0", fontWeight: 800, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "visible" }}>
+        <span aria-hidden="true">{icon.symbol} </span>{name}<span style={{ display: "block", color: "#D9A93B", fontSize: "0.5em", fontWeight: 800, marginTop: 2, whiteSpace: "nowrap" }}>Puntos: {score}</span>
       </div>
     </div>
   );
@@ -1680,7 +1680,7 @@ const styles = {
     border: "1.5px solid #B8892B", color: "#B8892B", fontSize: "clamp(18px, 5vw, 22px)",
     display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
   },
-  scoreBar: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "clamp(4px, 2vw, 10px)" },
+  scoreBar: { display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", rowGap: 8, gap: "clamp(4px, 2vw, 10px)" },
   progressTrack: { height: 4, background: "#243A5E", borderRadius: 4, marginTop: 16, overflow: "hidden" },
   progressFill: { height: "100%", background: "linear-gradient(90deg, #B8892B, #D4AF5A)", transition: "width 0.35s ease" },
   questionCard: {
