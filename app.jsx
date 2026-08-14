@@ -545,7 +545,7 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
     <div style={styles.container} className="fade-in">
       <header style={{ textAlign: "center", marginBottom: 40 }}>
         <RoseWindow size={100} colorA={team1Color} colorB={team2Color} />
-        <h1 className="font-display" style={styles.h1}>Duelo Bíblico</h1>
+        <h1 className="font-display" style={styles.h1}>Debate Bíblico</h1>
         <p className="font-body" style={styles.subtitle}>Dos equipos. Un libro de la Escritura. Que gane el que más conoce.</p>
       </header>
 
