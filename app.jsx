@@ -178,6 +178,19 @@ function shuffle(arr) {
   return a;
 }
 
+// Formato seguro para las partes importantes del texto bíblico.
+// **texto** = negrita, ==texto== = resaltado, **==texto==** = ambos.
+function FormattedVerse({ text }) {
+  const parts = String(text || "").split(/(\*\*==.+?==\*\*|==\*\*.+?\*\*==|\*\*.+?\*\*|==.+?==)/g);
+  return parts.map((part, index) => {
+    const both = (part.startsWith("**==") && part.endsWith("==**")) || (part.startsWith("==**") && part.endsWith("**=="));
+    const bold = both || (part.startsWith("**") && part.endsWith("**"));
+    const highlight = both || (part.startsWith("==") && part.endsWith("=="));
+    const content = both ? part.replace(/^\*\*==|==\*\*$|^==\*\*|\*\*==$/g, "") : bold ? part.slice(2, -2) : highlight ? part.slice(2, -2) : part;
+    return <span key={index} style={{ fontWeight: bold ? 700 : "inherit", background: highlight ? "rgba(212,175,90,0.42)" : "transparent", color: highlight ? "#FFF4CA" : "inherit", borderRadius: highlight ? 3 : 0, padding: highlight ? "0 3px" : 0 }}>{content}</span>;
+  });
+}
+
 /* ---------------------------------------------------------
    ROSETÓN decorativo (elemento distintivo)
 --------------------------------------------------------- */
@@ -952,6 +965,10 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
           rows={2}
           style={{ ...styles.input, marginTop: 8, resize: "vertical", fontFamily: "inherit", fontStyle: "italic" }}
         />
+        <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 6 }}>
+          Formato: <b>**texto**</b> para negrita, <b>==texto==</b> para resaltar y <b>**==texto==**</b> para ambos.
+        </div>
+        {verseText && <p className="font-body" style={{ color: "#F5EFE0", fontSize: 16, fontStyle: "italic", margin: "10px 0 0" }}>Vista previa: <FormattedVerse text={verseText} /></p>}
 
         <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
           {opts.map((o, i) => (
@@ -1056,6 +1073,9 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
                       rows={2}
                       style={{ ...styles.input, marginTop: 6, resize: "vertical", fontFamily: "inherit", fontStyle: "italic" }}
                     />
+                    <div className="font-ui" style={{ fontSize: 11, color: "#8FA0B8", marginTop: 5 }}>
+                      Usa **texto** (negrita), ==texto== (resaltado) o **==texto==** (ambos).
+                    </div>
                     <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                       {editState.opts.map((o, idx) => (
                         <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1099,7 +1119,7 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
                       </div>
                     )}
                     {q.verseText && (
-                      <p className="font-body" style={{ color: "#B8A98A", fontSize: 13.5, fontStyle: "italic", margin: "6px 0 0" }}>"{q.verseText}"</p>
+                      <p className="font-body" style={{ color: "#B8A98A", fontSize: 13.5, fontStyle: "italic", margin: "6px 0 0" }}>"<FormattedVerse text={q.verseText} />"</p>
                     )}
                     <div className="font-ui" style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12.5 }}>
                       {q.options.map((o, idx) => (
@@ -1317,7 +1337,7 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
               {book?.name} {currentQ.chapter}{currentQ.chapter && currentQ.verse ? ":" : ""}{currentQ.verse}
             </div>
             <p className="font-body" style={{ margin: 0, color: "#F5EFE0", fontSize: "clamp(20px, 4.2vw, 27px)", fontStyle: "italic", lineHeight: 1.5, textAlign: "center" }}>
-              "{currentQ.verseText}"
+              "<FormattedVerse text={currentQ.verseText} />"
             </p>
           </div>
         </>
