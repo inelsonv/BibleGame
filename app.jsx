@@ -301,7 +301,10 @@ function App() {
   const [team2Icon, setTeam2Icon] = useState(TEAM_ICONS[1].id);
   const [backgroundColor, setBackgroundColor] = useState("#0F1A2E");
   const [narrationEnabled, setNarrationEnabled] = useState(false);
-  const [timerSeconds, setTimerSeconds] = useState(20);
+  const [difficultyTimers, setDifficultyTimers] = useState({ 1: 20, 2: 20, 3: 20 });
+  function setDifficultyTimer(level, seconds) {
+    setDifficultyTimers((prev) => ({ ...prev, [level]: seconds }));
+  }
   const [feedbackDisplaySeconds, setFeedbackDisplaySeconds] = useState(3);
   const [verseDisplaySeconds, setVerseDisplaySeconds] = useState(5);
   const [bookId, setBookId] = useState(null);
@@ -523,7 +526,7 @@ function App() {
 
       {screen === "settings" && (
         <SettingsScreen
-          timerSeconds={timerSeconds} setTimerSeconds={setTimerSeconds}
+          difficultyTimers={difficultyTimers} setDifficultyTimer={setDifficultyTimer}
           feedbackDisplaySeconds={feedbackDisplaySeconds} setFeedbackDisplaySeconds={setFeedbackDisplaySeconds}
           verseDisplaySeconds={verseDisplaySeconds} setVerseDisplaySeconds={setVerseDisplaySeconds}
           backgroundColor={backgroundColor} setBackgroundColor={setBackgroundColor}
@@ -545,7 +548,7 @@ function App() {
           scores={scores}
           selected={selected}
           showFeedback={showFeedback}
-          timerSeconds={timerSeconds}
+          difficultyTimers={difficultyTimers}
           feedbackDisplaySeconds={feedbackDisplaySeconds}
           verseDisplaySeconds={verseDisplaySeconds}
           narrationEnabled={narrationEnabled}
@@ -682,7 +685,7 @@ function TeamCard({ label, name, setName, color, setColor, icon, setIcon }) {
 /* ---------------------------------------------------------
    PANTALLA: Configuración
 --------------------------------------------------------- */
-function SettingsScreen({ timerSeconds, setTimerSeconds, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
+function SettingsScreen({ difficultyTimers, setDifficultyTimer, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
   return (
     <div style={styles.container} className="fade-in">
       <button
@@ -699,25 +702,30 @@ function SettingsScreen({ timerSeconds, setTimerSeconds, feedbackDisplaySeconds,
       </header>
 
       <div style={{ ...styles.card, maxWidth: 420, margin: "0 auto" }}>
-        <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em" }}>
-            <Timer size={16} /> Tiempo por pregunta
-          </span>
-          <span className="font-display" style={{ color: "#F5EFE0", fontSize: 20 }}>{timerSeconds}s</span>
+        <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>
+          <Timer size={16} /> Tiempo por pregunta según dificultad
         </div>
-        <input
-          className="gold-range"
-          type="range"
-          min={5}
-          max={60}
-          step={5}
-          value={timerSeconds}
-          onChange={(e) => setTimerSeconds(Number(e.target.value))}
-          aria-label="Segundos por pregunta"
-        />
-        <div className="font-ui" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#8FA0B8", marginTop: 6 }}>
-          <span>5s</span><span>60s</span>
-        </div>
+        {DIFFICULTIES.map((d, i) => (
+          <div key={d.level} style={{ marginTop: i > 0 ? 20 : 0 }}>
+            <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ color: d.color, fontSize: 13, fontWeight: 700 }}>{d.label}</span>
+              <span className="font-display" style={{ color: "#F5EFE0", fontSize: 18 }}>{difficultyTimers[d.level]}s</span>
+            </div>
+            <input
+              className="gold-range"
+              type="range"
+              min={5}
+              max={60}
+              step={5}
+              value={difficultyTimers[d.level]}
+              onChange={(e) => setDifficultyTimer(d.level, Number(e.target.value))}
+              aria-label={`Segundos por pregunta de dificultad ${d.label}`}
+            />
+            <div className="font-ui" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#8FA0B8", marginTop: 4 }}>
+              <span>5s</span><span>60s</span>
+            </div>
+          </div>
+        ))}
       </div>
 
       <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
@@ -1256,8 +1264,9 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
 /* ---------------------------------------------------------
    PANTALLA 3: Juego
 --------------------------------------------------------- */
-function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, timerSeconds, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, onAnswer, onNext }) {
+function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, difficultyTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, onAnswer, onNext }) {
   const activeColor = teamColor(turn);
+  const timerSeconds = difficultyTimers[currentQ?.difficulty] ?? difficultyTimers[1] ?? 20;
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
   const [verseVisible, setVerseVisible] = useState(false);
   const [verseSecondsLeft, setVerseSecondsLeft] = useState(verseDisplaySeconds);
