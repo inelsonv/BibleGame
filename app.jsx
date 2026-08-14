@@ -161,27 +161,32 @@ function difficultyInfo(level) {
   return DIFFICULTIES.find((d) => d.level === level) || DIFFICULTIES[0];
 }
 
-// Asegura que cada pregunta de la biblioteca tenga un "id" único y correlativo
-// (como si fuera su número de ficha) y un nivel de "difficulty" (1-3).
-// Las preguntas que ya tienen id conservan su número; solo se numeran las que
-// todavía no lo tienen, continuando la numeración donde se quedó.
+// Asegura que cada pregunta tenga un "id" único y correlativo DENTRO DE SU LIBRO
+// (por ejemplo, la primera pregunta de "Hechos" es la #1 de Hechos) y un nivel
+// de "difficulty" (1-3). Las preguntas que ya tienen id conservan su número;
+// solo se numeran las que todavía no lo tienen, continuando donde se quedó
+// la numeración de ese mismo libro.
 function ensureQuestionMeta(library) {
-  let nextId = 1;
-  library.forEach((b) => b.questions.forEach((q) => {
-    if (typeof q.id === "number" && q.id >= nextId) nextId = q.id + 1;
-  }));
-  return library.map((b) => ({
-    ...b,
-    questions: b.questions.map((q) => {
-      const withId = typeof q.id === "number" ? q : { ...q, id: nextId++ };
-      return typeof withId.difficulty === "number" ? withId : { ...withId, difficulty: 1 };
-    }),
-  }));
+  return library.map((b) => {
+    let nextId = 1;
+    b.questions.forEach((q) => {
+      if (typeof q.id === "number" && q.id >= nextId) nextId = q.id + 1;
+    });
+    return {
+      ...b,
+      questions: b.questions.map((q) => {
+        const withId = typeof q.id === "number" ? q : { ...q, id: nextId++ };
+        return typeof withId.difficulty === "number" ? withId : { ...withId, difficulty: 1 };
+      }),
+    };
+  });
 }
 
-// Calcula el próximo id disponible (número siguiente) para toda la biblioteca
-function nextQuestionId(library) {
-  return library.reduce((max, b) => b.questions.reduce((m, q) => Math.max(m, q.id || 0), max), 0) + 1;
+// Calcula el próximo id disponible (número siguiente) dentro de un libro específico
+function nextQuestionId(library, bookId) {
+  const book = library.find((b) => b.id === bookId);
+  if (!book) return 1;
+  return book.questions.reduce((max, q) => Math.max(max, q.id || 0), 0) + 1;
 }
 
 function seedLibrary() {
@@ -210,6 +215,49 @@ function shuffle(arr) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+// Modos disponibles para el orden en que aparecen las preguntas durante la partida
+const QUESTION_ORDER_MODES = [
+  { id: "random", label: "Al azar", description: "Las preguntas salen en un orden aleatorio distinto cada partida." },
+  { id: "numeric", label: "Orden numérico", description: "Las preguntas aparecen en el orden de su número (ID)." },
+  { id: "alternating", label: "Alternada", description: "Alterna entre la primera y la última pregunta disponible (1, última, 2, penúltima…)." },
+];
+
+function orderByNumeric(questions) {
+  return [...questions].sort((a, b) => (a.id || 0) - (b.id || 0));
+}
+
+function orderAlternating(questions) {
+  const sorted = orderByNumeric(questions);
+  const result = [];
+  let left = 0, right = sorted.length - 1;
+  let takeFromLeft = true;
+  while (left <= right) {
+    if (takeFromLeft) {
+      result.push(sorted[left]);
+      left++;
+    } else {
+      result.push(sorted[right]);
+      right--;
+    }
+    takeFromLeft = !takeFromLeft;
+  }
+  return result;
+}
+
+function orderQuestions(questions, mode) {
+  if (mode === "numeric") return orderByNumeric(questions);
+  if (mode === "alternating") return orderAlternating(questions);
+  return shuffle(questions);
+}
+
+// Formatea segundos como "45s", "2m" o "2m 30s" para tiempos largos (hasta 5 min)
+function formatDuration(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s === 0 ? `${m} min` : `${m}m ${s}s`;
 }
 
 // Formato seguro para las partes importantes del texto bíblico.
@@ -261,6 +309,8 @@ function TimerRing({ secondsLeft, totalSeconds, size = 60 }) {
   const offset = circumference * (1 - pct);
   const urgent = secondsLeft <= 5 && secondsLeft > 0;
   const color = urgent ? "#C0405A" : secondsLeft === 0 ? "#6B2836" : "#B8892B";
+  const useClock = totalSeconds > 60;
+  const displayText = useClock ? `${Math.floor(Math.max(0, secondsLeft) / 60)}:${String(Math.max(0, secondsLeft) % 60).padStart(2, "0")}` : secondsLeft;
   return (
     <div
       className={urgent ? "pulse" : ""}
@@ -280,9 +330,9 @@ function TimerRing({ secondsLeft, totalSeconds, size = 60 }) {
       </svg>
       <div
         className="font-display"
-        style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color, fontSize: size * 0.32, fontWeight: 700 }}
+        style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color, fontSize: size * (useClock ? 0.24 : 0.32), fontWeight: 700 }}
       >
-        {secondsLeft}
+        {displayText}
       </div>
     </div>
   );
@@ -350,7 +400,7 @@ function App() {
   }
 
   function addQuestionToBook(targetBookId, question) {
-    const id = nextQuestionId(library);
+    const id = nextQuestionId(library, targetBookId);
     persistLibrary(library.map((b) => (b.id === targetBookId ? { ...b, questions: [...b.questions, { ...question, id }] } : b)));
   }
 
@@ -1448,20 +1498,20 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
 function ScorePill({ name, icon, color, score, active, align }) {
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: "clamp(6px, 2vw, 10px)", minWidth: 0,
+      display: "flex", alignItems: "center", gap: "clamp(8px, 2.5vw, 12px)", minWidth: 0,
       flexDirection: align === "right" ? "row-reverse" : "row",
       opacity: active ? 1 : 0.55, transition: "opacity 0.2s ease",
     }}>
       <div style={{
-        width: "clamp(30px, 9vw, 40px)", height: "clamp(30px, 9vw, 40px)", borderRadius: "50%", background: color,
+        width: "clamp(40px, 12vw, 56px)", height: "clamp(40px, 12vw, 56px)", borderRadius: "50%", background: color,
         display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
-        fontFamily: "'Cinzel', serif", fontWeight: 700, color: "#F5EFE0", fontSize: "clamp(12px, 3.5vw, 16px)",
+        fontFamily: "'Cinzel', serif", fontWeight: 700, color: "#F5EFE0", fontSize: "clamp(17px, 5vw, 24px)",
         boxShadow: active ? `0 0 0 3px #16233D, 0 0 0 5px ${color}` : "none",
       }}>
         {score}
       </div>
-      <div className="font-ui" style={{ fontSize: "clamp(11px, 3vw, 13.5px)", color: "#F5EFE0", fontWeight: 600, maxWidth: "clamp(50px, 24vw, 110px)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        <span aria-hidden="true">{icon.symbol} </span>{name}<span style={{ display: "block", color: "#B8A98A", fontSize: "0.78em", marginTop: 2 }}>Puntos acumulados: {score}</span>
+      <div className="font-ui" style={{ fontSize: "clamp(15px, 4.5vw, 20px)", color: "#F5EFE0", fontWeight: 700, maxWidth: "clamp(60px, 28vw, 130px)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span aria-hidden="true">{icon.symbol} </span>{name}<span style={{ display: "block", color: "#B8892B", fontSize: "0.6em", fontWeight: 700, marginTop: 2 }}>Puntos: {score}</span>
       </div>
     </div>
   );
