@@ -1244,11 +1244,11 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
       </div>
 
       {/* Turno + temporizador */}
-      <div key={qIndex} className="fade-in" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, margin: "22px 0 10px" }}>
-        <TimerRing secondsLeft={showFeedback ? timeLeft : timeLeft} totalSeconds={timerSeconds} />
-        <div className="font-ui" style={{ fontSize: 14, color: "#F5EFE0" }}>
+      <div key={qIndex} className="fade-in" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, margin: "24px 0 16px", textAlign: "center" }}>
+        <div className="font-ui" style={{ fontSize: 16, color: "#F5EFE0" }}>
           Turno de <span style={{ color: activeColor, fontWeight: 700 }}>{teamName(turn)}</span>
         </div>
+        <TimerRing secondsLeft={timeLeft} totalSeconds={timerSeconds} size={116} />
       </div>
 
       {/* Tarjeta de pregunta */}
