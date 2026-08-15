@@ -1380,7 +1380,7 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
       {/* Marcador */}
       <div style={styles.scoreBar}>
         <ScorePill name={teamName(1)} icon={teamIcon(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" />
-        <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(9px, 2.4vw, 11.5px)", flex: "0 1 auto", minWidth: 0, padding: "0 4px" }}>
+        <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(9px, 2.4vw, 11.5px)", flex: "0 1 auto", minWidth: 0, padding: "6px 4px 0" }}>
           <div style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>{book?.name}</div>
           <div>Pregunta {qIndex + 1} de {total}</div>
         </div>
@@ -1496,22 +1496,30 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
 }
 
 function ScorePill({ name, icon, color, score, active, align }) {
+  const isRight = align === "right";
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: "clamp(10px, 3vw, 16px)", minWidth: 0, flexShrink: 0,
-      flexDirection: align === "right" ? "row-reverse" : "row",
-      opacity: active ? 1 : 0.55, transition: "opacity 0.2s ease",
+      display: "flex", flexDirection: "column", alignItems: isRight ? "flex-end" : "flex-start",
+      gap: 6, minWidth: 0, opacity: active ? 1 : 0.55, transition: "opacity 0.2s ease",
     }}>
-      <div style={{
-        width: "clamp(58px, 19vw, 88px)", height: "clamp(58px, 19vw, 88px)", borderRadius: "50%", background: color,
-        display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
-        fontFamily: "'Cinzel', serif", fontWeight: 800, color: "#F5EFE0", fontSize: "clamp(26px, 8vw, 38px)",
-        boxShadow: active ? `0 0 0 3px #16233D, 0 0 0 5px ${color}` : "none",
+      <div className="font-ui" style={{
+        fontSize: "clamp(16px, 5vw, 23px)", color: "#F5EFE0", fontWeight: 800, lineHeight: 1.15,
+        textAlign: isRight ? "right" : "left", maxWidth: "38vw", wordBreak: "break-word",
       }}>
-        {score}
+        <span aria-hidden="true">{icon.symbol} </span>{name}
       </div>
-      <div className="font-ui" style={{ fontSize: "clamp(21px, 7.5vw, 32px)", color: "#F5EFE0", fontWeight: 800, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "visible" }}>
-        <span aria-hidden="true">{icon.symbol} </span>{name}<span style={{ display: "block", color: "#D9A93B", fontSize: "0.5em", fontWeight: 800, marginTop: 2, whiteSpace: "nowrap" }}>Puntos: {score}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: isRight ? "row-reverse" : "row" }}>
+        <div style={{
+          width: "clamp(48px, 14vw, 66px)", height: "clamp(48px, 14vw, 66px)", borderRadius: "50%", background: color,
+          display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
+          fontFamily: "'Cinzel', serif", fontWeight: 800, color: "#F5EFE0", fontSize: "clamp(20px, 6vw, 27px)",
+          boxShadow: active ? `0 0 0 3px #16233D, 0 0 0 5px ${color}` : "none",
+        }}>
+          {score}
+        </div>
+        <div className="font-ui" style={{ color: "#D9A93B", fontSize: "clamp(11.5px, 3.2vw, 14px)", fontWeight: 800, whiteSpace: "nowrap" }}>
+          Puntos: {score}
+        </div>
       </div>
     </div>
   );
@@ -1680,7 +1688,7 @@ const styles = {
     border: "1.5px solid #B8892B", color: "#B8892B", fontSize: "clamp(18px, 5vw, 22px)",
     display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
   },
-  scoreBar: { display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", rowGap: 8, gap: "clamp(4px, 2vw, 10px)" },
+  scoreBar: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "clamp(6px, 2.5vw, 14px)" },
   progressTrack: { height: 4, background: "#243A5E", borderRadius: 4, marginTop: 16, overflow: "hidden" },
   progressFill: { height: "100%", background: "linear-gradient(90deg, #B8892B, #D4AF5A)", transition: "width 0.35s ease" },
   questionCard: {
