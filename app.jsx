@@ -25,6 +25,9 @@ const Trash2 = (p) => <Icon {...p}><path d="M4 7h16" /><path d="M9 7V4h6v3" /><p
 const ArrowLeft = (p) => <Icon {...p}><path d="M19 12H5" /><path d="M11 18l-6-6 6-6" /></Icon>;
 const PenLine = (p) => <Icon {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" /></Icon>;
 const Settings = (p) => <Icon {...p}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.6 1Z" /></Icon>;
+const GripVertical = (p) => <Icon {...p}><circle cx="9" cy="6" r="1.3" fill="currentColor" stroke="none" /><circle cx="9" cy="12" r="1.3" fill="currentColor" stroke="none" /><circle cx="9" cy="18" r="1.3" fill="currentColor" stroke="none" /><circle cx="15" cy="6" r="1.3" fill="currentColor" stroke="none" /><circle cx="15" cy="12" r="1.3" fill="currentColor" stroke="none" /><circle cx="15" cy="18" r="1.3" fill="currentColor" stroke="none" /></Icon>;
+const ListOrdered = (p) => <Icon {...p}><path d="M10 6h11" /><path d="M10 12h11" /><path d="M10 18h11" /><path d="M4 6h1V4H4" /><path d="M4 10h2" /><path d="M4 14a1 1 0 1 1 1-1c0 .6-1 1-1 2h2" /></Icon>;
+const BarChart3 = (p) => <Icon {...p}><path d="M3 3v18h18" /><path d="M7 16v-4" /><path d="M12 16V8" /><path d="M17 16v-7" /></Icon>;
 
 /* ---------------------------------------------------------
    DATOS: banco de preguntas por libro bíblico
@@ -246,10 +249,16 @@ function orderAlternating(questions) {
   return result;
 }
 
-function orderQuestions(questions, mode) {
-  if (mode === "numeric") return orderByNumeric(questions);
-  if (mode === "alternating") return orderAlternating(questions);
-  return shuffle(questions);
+function orderQuestions(questions, mode, basis) {
+  const applyMode = (list) => {
+    if (mode === "numeric") return orderByNumeric(list);
+    if (mode === "alternating") return orderAlternating(list);
+    return shuffle(list);
+  };
+  if (basis === "difficulty") {
+    return [1, 2, 3].flatMap((lvl) => applyMode(questions.filter((q) => (q.difficulty || 1) === lvl)));
+  }
+  return applyMode(questions);
 }
 
 // Formatea segundos como "45s", "2m" o "2m 30s" para tiempos largos (hasta 5 min)
@@ -355,6 +364,8 @@ function App() {
   function setDifficultyTimer(level, seconds) {
     setDifficultyTimers((prev) => ({ ...prev, [level]: seconds }));
   }
+  const [orderBasis, setOrderBasis] = useState("sequence"); // "sequence" | "difficulty"
+  const [questionOrder, setQuestionOrder] = useState("random"); // "random" | "numeric" | "alternating"
   const [feedbackDisplaySeconds, setFeedbackDisplaySeconds] = useState(3);
   const [verseDisplaySeconds, setVerseDisplaySeconds] = useState(5);
   const [bookId, setBookId] = useState(null);
@@ -420,6 +431,17 @@ function App() {
     );
   }
 
+  // Recibe el nuevo orden completo de preguntas de un libro (ya reordenado por
+  // arrastre o al asignar una nueva posición) y renumera los id 1..N para que
+  // reflejen su nueva posición.
+  function reorderQuestionsInBook(targetBookId, orderedQuestions) {
+    persistLibrary(
+      library.map((b) =>
+        b.id === targetBookId ? { ...b, questions: orderedQuestions.map((q, i) => ({ ...q, id: i + 1 })) } : b
+      )
+    );
+  }
+
   const playableBooks = useMemo(() => library.filter((b) => b.questions.length > 0), [library]);
   const book = useMemo(() => library.find((b) => b.id === bookId), [library, bookId]);
   const customCount = library.find((b) => b.id === CUSTOM_BOOK_ID)?.questions.length || 0;
@@ -447,7 +469,7 @@ function App() {
     const chosen = library.find((b) => b.id === id);
     if (!chosen || chosen.questions.length === 0) return;
     setBookId(id);
-    setQuestions(shuffle(chosen.questions));
+    setQuestions(orderQuestions(chosen.questions, questionOrder, orderBasis));
     setQIndex(0);
     setTurn(1);
     setScores({ 1: 0, 2: 0 });
@@ -568,6 +590,7 @@ function App() {
           onAddQuestion={addQuestionToBook}
           onUpdateQuestion={updateQuestionInBook}
           onDeleteQuestion={deleteQuestionFromBook}
+          onReorderQuestions={reorderQuestionsInBook}
           saveError={librarySaveError}
           loaded={libraryLoaded}
           onBack={() => setScreen(screenBeforeManage)}
@@ -577,6 +600,8 @@ function App() {
       {screen === "settings" && (
         <SettingsScreen
           difficultyTimers={difficultyTimers} setDifficultyTimer={setDifficultyTimer}
+          orderBasis={orderBasis} setOrderBasis={setOrderBasis}
+          questionOrder={questionOrder} setQuestionOrder={setQuestionOrder}
           feedbackDisplaySeconds={feedbackDisplaySeconds} setFeedbackDisplaySeconds={setFeedbackDisplaySeconds}
           verseDisplaySeconds={verseDisplaySeconds} setVerseDisplaySeconds={setVerseDisplaySeconds}
           backgroundColor={backgroundColor} setBackgroundColor={setBackgroundColor}
@@ -735,7 +760,7 @@ function TeamCard({ label, name, setName, color, setColor, icon, setIcon }) {
 /* ---------------------------------------------------------
    PANTALLA: Configuración
 --------------------------------------------------------- */
-function SettingsScreen({ difficultyTimers, setDifficultyTimer, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
+function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setOrderBasis, questionOrder, setQuestionOrder, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
   return (
     <div style={styles.container} className="fade-in">
       <button
@@ -759,23 +784,86 @@ function SettingsScreen({ difficultyTimers, setDifficultyTimer, feedbackDisplayS
           <div key={d.level} style={{ marginTop: i > 0 ? 20 : 0 }}>
             <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
               <span style={{ color: d.color, fontSize: 13, fontWeight: 700 }}>{d.label}</span>
-              <span className="font-display" style={{ color: "#F5EFE0", fontSize: 18 }}>{difficultyTimers[d.level]}s</span>
+              <span className="font-display" style={{ color: "#F5EFE0", fontSize: 18 }}>{formatDuration(difficultyTimers[d.level])}</span>
             </div>
             <input
               className="gold-range"
               type="range"
               min={5}
-              max={60}
+              max={300}
               step={5}
               value={difficultyTimers[d.level]}
               onChange={(e) => setDifficultyTimer(d.level, Number(e.target.value))}
               aria-label={`Segundos por pregunta de dificultad ${d.label}`}
             />
             <div className="font-ui" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#8FA0B8", marginTop: 4 }}>
-              <span>5s</span><span>60s</span>
+              <span>5s</span><span>5 min</span>
             </div>
           </div>
         ))}
+      </div>
+
+      <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
+        <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 14 }}>
+          <ListOrdered size={16} /> Orden de las preguntas en el duelo
+        </div>
+        <div className="font-ui" style={{ fontSize: 12, color: "#8FA0B8", marginBottom: 10 }}>¿En qué se basa el orden?</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          <button
+            type="button" className="font-ui"
+            onClick={() => setOrderBasis("sequence")}
+            aria-pressed={orderBasis === "sequence"}
+            style={{
+              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              padding: "10px 8px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700,
+              background: orderBasis === "sequence" ? "#B8892B" : "rgba(255,255,255,0.04)",
+              color: orderBasis === "sequence" ? "#0F1A2E" : "#B8A98A",
+              border: orderBasis === "sequence" ? "1.5px solid #B8892B" : "1.5px solid #3A5578",
+            }}
+          >
+            <ListOrdered size={14} /> Orden de preguntas
+          </button>
+          <button
+            type="button" className="font-ui"
+            onClick={() => setOrderBasis("difficulty")}
+            aria-pressed={orderBasis === "difficulty"}
+            style={{
+              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              padding: "10px 8px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700,
+              background: orderBasis === "difficulty" ? "#B8892B" : "rgba(255,255,255,0.04)",
+              color: orderBasis === "difficulty" ? "#0F1A2E" : "#B8A98A",
+              border: orderBasis === "difficulty" ? "1.5px solid #B8892B" : "1.5px solid #3A5578",
+            }}
+          >
+            <BarChart3 size={14} /> Nivel de dificultad
+          </button>
+        </div>
+        {orderBasis === "difficulty" && (
+          <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: -10, marginBottom: 16 }}>
+            Las preguntas se presentarán agrupadas de Fácil → Intermedio → Difícil.
+          </div>
+        )}
+
+        <div className="font-ui" style={{ fontSize: 12, color: "#8FA0B8", marginBottom: 10 }}>
+          {orderBasis === "difficulty" ? "¿Cómo ordenar dentro de cada nivel?" : "¿Cómo ordenar las preguntas?"}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {QUESTION_ORDER_MODES.map((m) => (
+            <button
+              key={m.id} type="button" className="font-ui"
+              onClick={() => setQuestionOrder(m.id)}
+              aria-pressed={questionOrder === m.id}
+              style={{
+                textAlign: "left", padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+                background: questionOrder === m.id ? "rgba(184,137,43,0.16)" : "rgba(255,255,255,0.03)",
+                border: questionOrder === m.id ? "1.5px solid #B8892B" : "1.5px solid #3A5578",
+              }}
+            >
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: questionOrder === m.id ? "#B8892B" : "#F5EFE0" }}>{m.label}</div>
+              <div style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 2 }}>{m.description}</div>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
@@ -890,7 +978,7 @@ function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books,
 /* ---------------------------------------------------------
    PANTALLA: Preguntas (crear, editar, borrar — de cualquier libro)
 --------------------------------------------------------- */
-function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDeleteQuestion, saveError, loaded, onBack }) {
+function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onReorderQuestions, saveError, loaded, onBack }) {
   const [selectedBookId, setSelectedBookId] = useState(library[0]?.id);
   const [qText, setQText] = useState("");
   const [opts, setOpts] = useState(["", "", ""]);
@@ -901,9 +989,36 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
   const [difficulty, setDifficulty] = useState(1);
   const [formError, setFormError] = useState("");
   const [editState, setEditState] = useState(null); // { index, qText, opts, correct, chapter, verse, verseText, difficulty }
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [positionDrafts, setPositionDrafts] = useState({}); // { [questionId]: "texto que se está escribiendo" }
 
   const selectedBook = library.find((b) => b.id === selectedBookId) || library[0];
   const canAdd = qText.trim() && opts.every((o) => o.trim()) && chapter.trim() && verse.trim() && verseText.trim();
+
+  function moveQuestion(fromIndex, toIndex) {
+    if (fromIndex === toIndex || fromIndex == null || toIndex == null) return;
+    const list = [...selectedBook.questions];
+    const clampedTo = Math.max(0, Math.min(list.length - 1, toIndex));
+    const [moved] = list.splice(fromIndex, 1);
+    list.splice(clampedTo, 0, moved);
+    onReorderQuestions(selectedBook.id, list);
+  }
+
+  function handleDrop(targetIndex) {
+    if (dragIndex !== null) moveQuestion(dragIndex, targetIndex);
+    setDragIndex(null);
+    setDragOverIndex(null);
+  }
+
+  function commitPosition(index, q) {
+    const raw = positionDrafts[q.id];
+    if (raw === undefined) return;
+    const target = parseInt(raw, 10);
+    setPositionDrafts((prev) => { const next = { ...prev }; delete next[q.id]; return next; });
+    if (!Number.isFinite(target)) return;
+    moveQuestion(index, target - 1);
+  }
 
   function updateOpt(i, val) {
     setOpts((prev) => prev.map((o, idx) => (idx === i ? val : o)));
@@ -1249,10 +1364,48 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
                 );
               }
               return (
-                <div key={i} style={{ ...styles.card, maxWidth: "none", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                  <div>
-                    <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontSize: 11.5, color: "#8FA0B8" }}>#{q.id}</span>
+                <div
+                  key={i}
+                  draggable
+                  onDragStart={() => setDragIndex(i)}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverIndex(i); }}
+                  onDragLeave={() => setDragOverIndex((prev) => (prev === i ? null : prev))}
+                  onDrop={(e) => { e.preventDefault(); handleDrop(i); }}
+                  onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
+                  style={{
+                    ...styles.card, maxWidth: "none", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12,
+                    opacity: dragIndex === i ? 0.4 : 1,
+                    outline: dragOverIndex === i && dragIndex !== null && dragIndex !== i ? "2px dashed #B8892B" : "none",
+                    outlineOffset: 2,
+                  }}
+                >
+                  <div
+                    className="font-ui"
+                    title="Arrastra para reordenar"
+                    aria-label="Arrastra para reordenar esta pregunta"
+                    style={{ cursor: "grab", color: "#8FA0B8", flex: "0 0 auto", paddingTop: 2, touchAction: "none" }}
+                  >
+                    <GripVertical size={18} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11.5, color: "#8FA0B8" }}>Posición</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={selectedBook.questions.length}
+                        className="font-ui"
+                        value={positionDrafts[q.id] ?? q.id}
+                        onChange={(e) => setPositionDrafts((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                        onBlur={() => commitPosition(i, q)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+                        aria-label={`Posición de la pregunta ${q.id} de ${selectedBook.name}`}
+                        style={{
+                          width: 52, background: "#0F1A2E", color: "#F5EFE0", border: "1.5px solid #3A5578",
+                          borderRadius: 6, padding: "2px 6px", fontSize: 12.5, textAlign: "center",
+                        }}
+                      />
+                      <span style={{ fontSize: 11.5, color: "#8FA0B8" }}>de {selectedBook.questions.length}</span>
                       <span style={{
                         fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
                         color: difficultyInfo(q.difficulty).color, border: `1px solid ${difficultyInfo(q.difficulty).color}`,
