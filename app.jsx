@@ -28,6 +28,8 @@ const Settings = (p) => <Icon {...p}><circle cx="12" cy="12" r="3" /><path d="M1
 const GripVertical = (p) => <Icon {...p}><circle cx="9" cy="6" r="1.3" fill="currentColor" stroke="none" /><circle cx="9" cy="12" r="1.3" fill="currentColor" stroke="none" /><circle cx="9" cy="18" r="1.3" fill="currentColor" stroke="none" /><circle cx="15" cy="6" r="1.3" fill="currentColor" stroke="none" /><circle cx="15" cy="12" r="1.3" fill="currentColor" stroke="none" /><circle cx="15" cy="18" r="1.3" fill="currentColor" stroke="none" /></Icon>;
 const ListOrdered = (p) => <Icon {...p}><path d="M10 6h11" /><path d="M10 12h11" /><path d="M10 18h11" /><path d="M4 6h1V4H4" /><path d="M4 10h2" /><path d="M4 14a1 1 0 1 1 1-1c0 .6-1 1-1 2h2" /></Icon>;
 const BarChart3 = (p) => <Icon {...p}><path d="M3 3v18h18" /><path d="M7 16v-4" /><path d="M12 16V8" /><path d="M17 16v-7" /></Icon>;
+const Maximize = (p) => <Icon {...p}><path d="M8 3H3v5" /><path d="M16 3h5v5" /><path d="M21 16v5h-5" /><path d="M3 16v5h5" /></Icon>;
+const Minimize = (p) => <Icon {...p}><path d="M8 3v5H3" /><path d="M16 3v5h5" /><path d="M21 16h-5v5" /><path d="M3 16h5v5" /></Icon>;
 
 /* ---------------------------------------------------------
    DATOS: banco de preguntas por libro bíblico
@@ -153,6 +155,69 @@ const BIBLE_BOOKS = [
 const LETTERS = ["A", "B", "C"];
 const CUSTOM_BOOK_ID = "personalizado";
 const LIBRARY_STORAGE_KEY = "duelo-biblico:biblioteca";
+
+// Abreviaturas usadas por la fuente de texto bíblico (Reina-Valera, dominio
+// público), en el MISMO orden canónico que BIBLE_BOOKS, para poder mapear
+// cada libro de la app con su libro correspondiente en el texto fuente.
+const BIBLE_API_ABBREVS = [
+  "gn", "ex", "lv", "nm", "dt", "js", "jud", "rt", "1sm", "2sm", "1kgs", "2kgs", "1ch", "2ch", "ezr", "ne", "et", "job", "ps", "prv", "ec", "so", "is", "jr", "lm", "ez", "dn", "ho", "jl", "am", "ob", "jn", "mi", "na", "hk", "zp", "hg", "zc", "ml",
+  "mt", "mk", "lk", "jo", "act", "rm", "1co", "2co", "gl", "eph", "ph", "cl", "1ts", "2ts", "1tm", "2tm", "tt", "phm", "hb", "jm", "1pe", "2pe", "1jo", "2jo", "3jo", "jd", "re",
+];
+const BIBLE_TEXT_SOURCE_URL = "https://raw.githubusercontent.com/thiagobodruk/bible/master/json/es_rvr.json";
+const bookIdToBibleAbbrev = new Map(BIBLE_BOOKS.map(([id], i) => [id, BIBLE_API_ABBREVS[i]]));
+
+let bibleTextPromise = null;
+// Descarga (una sola vez por sesión) el texto completo de la Biblia Reina-Valera
+// desde una fuente pública, y lo deja en caché en memoria para búsquedas rápidas.
+function loadBibleText() {
+  if (!bibleTextPromise) {
+    bibleTextPromise = fetch(BIBLE_TEXT_SOURCE_URL)
+      .then((r) => {
+        if (!r.ok) throw new Error("No se pudo descargar el texto bíblico.");
+        return r.text();
+      })
+      .then((raw) => JSON.parse(raw.replace(/^\uFEFF/, "")))
+      .catch((err) => {
+        bibleTextPromise = null; // permite reintentar en el próximo llamado
+        throw err;
+      });
+  }
+  return bibleTextPromise;
+}
+
+// Convierte "16", "16-18" o "16,18" en la lista de números de versículo [16,17,18] / [16,18]
+function parseVerseNumbers(str) {
+  return String(str || "")
+    .split(",")
+    .flatMap((chunk) => {
+      const range = chunk.trim().match(/^(\d+)\s*-\s*(\d+)$/);
+      if (range) {
+        const start = parseInt(range[1], 10), end = parseInt(range[2], 10);
+        const nums = [];
+        for (let n = start; n <= Math.min(end, start + 40); n++) nums.push(n);
+        return nums;
+      }
+      const n = parseInt(chunk.trim(), 10);
+      return Number.isFinite(n) ? [n] : [];
+    });
+}
+
+// Busca el texto de un capítulo/versículo (o rango) de un libro dentro del
+// texto bíblico ya descargado. Lanza un error descriptivo si no lo encuentra.
+function findVerseText(bibleData, bookId, chapterStr, verseStr) {
+  const abbrev = bookIdToBibleAbbrev.get(bookId);
+  if (!abbrev) throw new Error("Este libro no tiene una fuente bíblica asociada.");
+  const book = bibleData.find((b) => b.abbrev === abbrev);
+  if (!book) throw new Error("No se encontró el libro en el texto bíblico.");
+  const chapterNum = parseInt(chapterStr, 10);
+  const chapterArr = book.chapters[chapterNum - 1];
+  if (!Number.isFinite(chapterNum) || !chapterArr) throw new Error(`El capítulo ${chapterStr || "?"} no existe en este libro.`);
+  const verseNums = parseVerseNumbers(verseStr);
+  if (verseNums.length === 0) throw new Error("Escribe un número de versículo válido (ej. 16 o 16-18).");
+  const texts = verseNums.map((n) => chapterArr[n - 1]);
+  if (texts.some((t) => !t)) throw new Error(`El versículo ${verseStr} no existe en ese capítulo.`);
+  return texts.join(" ");
+}
 
 // Niveles de dificultad de cada pregunta
 const DIFFICULTIES = [
@@ -380,6 +445,23 @@ function App() {
   const [libraryLoaded, setLibraryLoaded] = useState(false);
   const [librarySaveError, setLibrarySaveError] = useState(false);
   const [screenBeforeManage, setScreenBeforeManage] = useState("setup");
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }
 
   // Cargar la biblioteca guardada (preguntas base + propias, con cualquier edición previa)
   useEffect(() => {
@@ -560,6 +642,21 @@ function App() {
         input[type="range"].gold-range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #B8892B; border: 2px solid #F5EFE0; cursor: pointer; margin-top: -1px; }
         input[type="range"].gold-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #B8892B; border: 2px solid #F5EFE0; cursor: pointer; }
       `}</style>
+
+      <button
+        type="button"
+        onClick={toggleFullscreen}
+        aria-label={isFullscreen ? "Salir de pantalla completa" : "Ver en pantalla completa"}
+        title={isFullscreen ? "Salir de pantalla completa" : "Ver en pantalla completa"}
+        style={{
+          position: "fixed", top: "clamp(10px, 3vw, 16px)", right: "clamp(10px, 3vw, 16px)", zIndex: 60,
+          width: 42, height: 42, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(15,26,46,0.8)", border: "1.5px solid #3A5578", color: "#D9A93B",
+          cursor: "pointer", backdropFilter: "blur(4px)",
+        }}
+      >
+        {isFullscreen ? <Minimize size={19} /> : <Maximize size={19} />}
+      </button>
 
       {screen === "setup" && (
         <SetupScreen
@@ -992,6 +1089,7 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [positionDrafts, setPositionDrafts] = useState({}); // { [questionId]: "texto que se está escribiendo" }
+  const [verseLookup, setVerseLookup] = useState({ status: "idle", message: "" }); // status: idle | loading | success | error
 
   const selectedBook = library.find((b) => b.id === selectedBookId) || library[0];
   const canAdd = qText.trim() && opts.every((o) => o.trim()) && chapter.trim() && verse.trim() && verseText.trim();
@@ -1020,6 +1118,27 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
     moveQuestion(index, target - 1);
   }
 
+  const canLookupVerse = selectedBook && bookIdToBibleAbbrev.has(selectedBook.id);
+
+  // Busca el texto del capítulo/versículo indicados y lo coloca en la casilla
+  // correspondiente (formulario de "Nueva pregunta" o el de edición inline).
+  async function lookupVerse(chapterVal, verseVal, applyText) {
+    if (!canLookupVerse) return;
+    if (!chapterVal.trim() || !verseVal.trim()) {
+      setVerseLookup({ status: "error", message: "Escribe primero el capítulo y el versículo." });
+      return;
+    }
+    setVerseLookup({ status: "loading", message: "Buscando el texto…" });
+    try {
+      const bibleData = await loadBibleText();
+      const text = findVerseText(bibleData, selectedBook.id, chapterVal, verseVal);
+      applyText(text);
+      setVerseLookup({ status: "success", message: "Texto encontrado y colocado abajo." });
+    } catch (err) {
+      setVerseLookup({ status: "error", message: err.message || "No se pudo encontrar el texto. Escríbelo manualmente." });
+    }
+  }
+
   function updateOpt(i, val) {
     setOpts((prev) => prev.map((o, idx) => (idx === i ? val : o)));
   }
@@ -1033,6 +1152,7 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
     setVerseText("");
     setDifficulty(1);
     setFormError("");
+    setVerseLookup({ status: "idle", message: "" });
   }
 
   function addQuestion() {
@@ -1169,6 +1289,29 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
           </div>
         </div>
 
+        {canLookupVerse && (
+          <div style={{ marginTop: 10 }}>
+            <button
+              type="button"
+              className="font-ui"
+              onClick={() => lookupVerse(chapter, verse, setVerseText)}
+              disabled={verseLookup.status === "loading"}
+              style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8,
+                background: "rgba(184,137,43,0.14)", border: "1.5px solid #B8892B", color: "#D9A93B",
+                fontSize: 13, fontWeight: 700, cursor: verseLookup.status === "loading" ? "wait" : "pointer",
+              }}
+            >
+              <BookOpen size={14} /> {verseLookup.status === "loading" ? "Buscando…" : "Buscar texto en la Biblia"}
+            </button>
+            {verseLookup.status !== "idle" && (
+              <div className="font-ui" style={{ fontSize: 11.5, marginTop: 6, color: verseLookup.status === "error" ? "#C0405A" : verseLookup.status === "success" ? "#4CA98D" : "#8FA0B8" }}>
+                {verseLookup.message}
+              </div>
+            )}
+          </div>
+        )}
+
         <label className="font-ui" style={{ fontSize: 12.5, color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 14, display: "block" }}>Texto del versículo</label>
         <textarea
           className="font-body"
@@ -1299,6 +1442,28 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
                         />
                       </div>
                     </div>
+                    {canLookupVerse && (
+                      <div style={{ marginTop: 8 }}>
+                        <button
+                          type="button"
+                          className="font-ui"
+                          onClick={() => lookupVerse(editState.chapter, editState.verse, (text) => setEditState((prev) => ({ ...prev, verseText: text })))}
+                          disabled={verseLookup.status === "loading"}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 7,
+                            background: "rgba(184,137,43,0.14)", border: "1.5px solid #B8892B", color: "#D9A93B",
+                            fontSize: 12, fontWeight: 700, cursor: verseLookup.status === "loading" ? "wait" : "pointer",
+                          }}
+                        >
+                          <BookOpen size={13} /> {verseLookup.status === "loading" ? "Buscando…" : "Buscar texto en la Biblia"}
+                        </button>
+                        {verseLookup.status !== "idle" && (
+                          <div className="font-ui" style={{ fontSize: 11, marginTop: 5, color: verseLookup.status === "error" ? "#C0405A" : verseLookup.status === "success" ? "#4CA98D" : "#8FA0B8" }}>
+                            {verseLookup.message}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <label className="font-ui" style={{ fontSize: 11, color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 10, display: "block" }}>Texto del versículo</label>
                     <textarea
                       className="font-body"
