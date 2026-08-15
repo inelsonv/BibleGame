@@ -1698,9 +1698,9 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
       {/* Marcador */}
       <div style={styles.scoreBar}>
         <ScorePill name={teamName(1)} icon={teamIcon(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" />
-        <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(9px, 2.4vw, 11.5px)", flex: "0 1 auto", minWidth: 0, padding: "6px 4px 0" }}>
-          <div style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>{book?.name}</div>
-          <div>Pregunta {qIndex + 1} de {total}</div>
+        <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(10px, 2.6vw, 12.5px)", flex: "0 1 auto", minWidth: 0, padding: "6px 4px 0" }}>
+          <div className="font-display" style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "clamp(17px, 6vw, 26px)" }}>{book?.name}</div>
+          <div style={{ marginTop: 2 }}>Pregunta {qIndex + 1} de {total}</div>
         </div>
         <ScorePill name={teamName(2)} icon={teamIcon(2)} color={teamColor(2)} score={scores[2]} active={turn === 2} align="right" />
       </div>
@@ -1834,9 +1834,6 @@ function ScorePill({ name, icon, color, score, active, align }) {
           boxShadow: active ? `0 0 0 3px #16233D, 0 0 0 5px ${color}` : "none",
         }}>
           {score}
-        </div>
-        <div className="font-ui" style={{ color: "#D9A93B", fontSize: "clamp(11.5px, 3.2vw, 14px)", fontWeight: 800, whiteSpace: "nowrap" }}>
-          Puntos: {score}
         </div>
       </div>
     </div>
