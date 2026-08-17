@@ -364,6 +364,46 @@ function formatDuration(seconds) {
   return s === 0 ? `${m} min` : `${m}m ${s}s`;
 }
 
+// ---- Sonidos de respuesta (sintetizados, sin archivos externos) ----
+let sharedAudioCtx = null;
+function getAudioContext() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!sharedAudioCtx) sharedAudioCtx = new Ctx();
+    if (sharedAudioCtx.state === "suspended") sharedAudioCtx.resume().catch(() => {});
+    return sharedAudioCtx;
+  } catch {
+    return null;
+  }
+}
+function playTone(ctx, freq, startTime, duration, type, peakGain) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, startTime);
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(peakGain, startTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.03);
+}
+function playCorrectSound() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  playTone(ctx, 587.33, now, 0.16, "sine", 0.22); // Re5
+  playTone(ctx, 880.0, now + 0.13, 0.26, "sine", 0.22); // La5
+}
+function playIncorrectSound() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  playTone(ctx, 196.0, now, 0.26, "sawtooth", 0.16); // Sol3
+  playTone(ctx, 146.83, now + 0.13, 0.32, "sawtooth", 0.18); // Re3 (más grave: "fallo")
+}
+
 // Formato seguro para las partes importantes del texto bíblico.
 // **texto** = negrita, ==texto== = resaltado, **==texto==** = ambos.
 function FormattedVerse({ text }) {
@@ -564,29 +604,26 @@ function App() {
 
   useEffect(() => () => stopHosting(), []); // limpiar la conexión al desmontar la app
 
-  // Cargar la biblioteca guardada (preguntas base + propias, con cualquier edición previa)
+  // Cargar la biblioteca guardada (preguntas base + propias, con cualquier edición previa).
+  // Se usa localStorage del navegador: funciona en la web y también dentro de una futura app nativa.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await window.storage.get(LIBRARY_STORAGE_KEY, false);
-        if (!cancelled && result?.value) {
-          const parsed = JSON.parse(result.value);
-          if (Array.isArray(parsed) && parsed.length > 0) setLibrary(normalizeLibrary(parsed));
-        }
-      } catch (e) {
-        // primera vez que se abre la app: se usa la biblioteca base por defecto
-      } finally {
-        if (!cancelled) setLibraryLoaded(true);
+    try {
+      const raw = localStorage.getItem(LIBRARY_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) setLibrary(normalizeLibrary(parsed));
       }
-    })();
-    return () => { cancelled = true; };
+    } catch (e) {
+      // primera vez que se abre la app, o el navegador bloquea el almacenamiento: se usa la biblioteca base
+    } finally {
+      setLibraryLoaded(true);
+    }
   }, []);
 
-  async function persistLibrary(next) {
+  function persistLibrary(next) {
     setLibrary(next);
     try {
-      await window.storage.set(LIBRARY_STORAGE_KEY, JSON.stringify(next), false);
+      localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(next));
       setLibrarySaveError(false);
     } catch (e) {
       setLibrarySaveError(true);
@@ -700,6 +737,9 @@ function App() {
     setShowFeedback(true);
     if (idx === currentQ.correct) {
       setScores((s) => ({ ...s, [turn]: s[turn] + 1 }));
+      playCorrectSound();
+    } else {
+      playIncorrectSound();
     }
   }
 
@@ -1088,52 +1128,52 @@ function RemoteHostScreen({ roomCode, remoteStatus, remoteError, team1Name, team
       )}
 
       {roomCode && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 480, margin: "0 auto" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640, margin: "0 auto" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "center" }}>
           {[1, 2].map((team) => {
             const name = team === 1 ? team1Name : team2Name;
             const color = team === 1 ? team1Color : team2Color;
             const connected = remoteStatus[team] === "connected";
             const url = buildJoinUrl(roomCode, team);
             return (
-              <div key={team} style={{ ...styles.card, maxWidth: "none" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                  <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "#F5EFE0", fontSize: 15 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: color, display: "inline-block" }} />
-                    {name}
-                  </div>
-                  <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: connected ? "#4CA98D" : "#B8A98A" }}>
-                    <Wifi size={14} /> {connected ? "Conectado" : "Esperando…"}
-                  </div>
+              <div key={team} style={{ ...styles.card, maxWidth: 300, flex: "1 1 260px", textAlign: "center" }}>
+                <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 700, color: "#F5EFE0", fontSize: 17, marginBottom: 4 }}>
+                  <span style={{ width: 11, height: 11, borderRadius: "50%", background: color, display: "inline-block" }} />
+                  {name}
                 </div>
-                <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-                  <QRCodeBox value={url} size={104} />
-                  <div style={{ flex: 1, minWidth: 160 }}>
-                    <div className="font-ui" style={{ fontSize: 11, color: "#8FA0B8", marginBottom: 6 }}>
-                      Escanea el código o comparte el enlace:
-                    </div>
-                    <div className="font-ui" style={{
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      background: "#0F1A2E", border: "1.5px solid #3A5578", borderRadius: 7, padding: "8px 10px", fontSize: 12.5, color: "#B8A98A", marginBottom: 8,
-                    }}>
-                      {url}
-                    </div>
-                    <button
-                      type="button" className="font-ui"
-                      onClick={() => copyLink(team)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 5, padding: "8px 12px", borderRadius: 7, cursor: "pointer",
-                        background: copiedTeam === team ? "#4CA98D" : "rgba(184,137,43,0.14)",
-                        border: `1.5px solid ${copiedTeam === team ? "#4CA98D" : "#B8892B"}`,
-                        color: copiedTeam === team ? "#0F1A2E" : "#D9A93B", fontSize: 12.5, fontWeight: 700,
-                      }}
-                    >
-                      <Copy size={13} /> {copiedTeam === team ? "¡Copiado!" : "Copiar enlace"}
-                    </button>
-                  </div>
+                <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: connected ? "#4CA98D" : "#B8A98A", marginBottom: 14 }}>
+                  <Wifi size={14} /> {connected ? "Conectado" : "Esperando…"}
                 </div>
+
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+                  <QRCodeBox value={url} size={220} />
+                </div>
+                <div className="font-ui" style={{ fontSize: 12, color: "#8FA0B8", marginBottom: 10 }}>
+                  Escanea este código con la cámara del celular
+                </div>
+
+                <div className="font-ui" style={{
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  background: "#0F1A2E", border: "1.5px solid #3A5578", borderRadius: 7, padding: "8px 10px", fontSize: 12.5, color: "#B8A98A", marginBottom: 10,
+                }}>
+                  {url}
+                </div>
+                <button
+                  type="button" className="font-ui"
+                  onClick={() => copyLink(team)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "9px 12px", borderRadius: 7, cursor: "pointer",
+                    background: copiedTeam === team ? "#4CA98D" : "rgba(184,137,43,0.14)",
+                    border: `1.5px solid ${copiedTeam === team ? "#4CA98D" : "#B8892B"}`,
+                    color: copiedTeam === team ? "#0F1A2E" : "#D9A93B", fontSize: 12.5, fontWeight: 700,
+                  }}
+                >
+                  <Copy size={13} /> {copiedTeam === team ? "¡Copiado!" : "Copiar enlace"}
+                </button>
               </div>
             );
           })}
+          </div>
 
           <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", textAlign: "center", marginTop: 4 }}>
             Código de sala: <span style={{ color: "#D9A93B", fontWeight: 700, letterSpacing: "0.1em" }}>{roomCode}</span>
@@ -2050,25 +2090,30 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
         <div style={{ ...styles.progressFill, width: `${((qIndex) / total) * 100}%` }} />
       </div>
 
+      {/* Pregunta en grande — pensada para proyectarse en pantalla grande */}
+      <div key={"bigq" + qIndex} className="fade-in" style={{ textAlign: "center", margin: "22px 0 6px", padding: "0 clamp(4px, 2vw, 16px)" }}>
+        {(currentQ.chapter || currentQ.verse) && (
+          <div className="font-ui" style={{ fontSize: "clamp(12px, 2.6vw, 15px)", color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 8 }}>
+            {book?.name} {currentQ.chapter}{currentQ.chapter && currentQ.verse ? ":" : ""}{currentQ.verse}
+          </div>
+        )}
+        <p className="font-display" style={{ fontSize: "clamp(24px, 5.2vw, 42px)", color: "#F5EFE0", lineHeight: 1.3, fontWeight: 700, margin: 0 }}>
+          {currentQ.q}
+        </p>
+      </div>
+
       {/* Turno + temporizador */}
-      <div key={qIndex} className="fade-in" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, margin: "24px 0 16px", textAlign: "center" }}>
+      <div key={qIndex} className="fade-in" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, margin: "10px 0 16px", textAlign: "center" }}>
         <div className="font-ui" style={{ fontSize: 16, color: "#F5EFE0" }}>
           Turno de <span style={{ color: activeColor, fontWeight: 700 }}>{teamName(turn)}</span>
         </div>
         <TimerRing secondsLeft={timeLeft} totalSeconds={timerSeconds} size={116} />
       </div>
 
-      {/* Tarjeta de pregunta */}
+      {/* Tarjeta de opciones */}
       <div key={"q" + qIndex} className="fade-in" style={{ ...styles.questionCard, borderColor: activeColor }}>
-        {(currentQ.chapter || currentQ.verse) && (
-          <div className="font-ui" style={{ fontSize: 12.5, color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-            {book?.name} {currentQ.chapter}{currentQ.chapter && currentQ.verse ? ":" : ""}{currentQ.verse}
-          </div>
-        )}
-        <p className="font-body" style={styles.questionText}>{currentQ.q}</p>
-
         {timedOut && (
-          <div className="font-ui" style={{ marginTop: 10, color: "#C0405A", fontSize: 13.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          <div className="font-ui" style={{ marginBottom: 10, color: "#C0405A", fontSize: 13.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
             ⏱ Tiempo agotado — sin punto para {teamName(turn)}
           </div>
         )}
@@ -2235,32 +2280,67 @@ function Confetti({ colors, count = 70 }) {
 /* ---------------------------------------------------------
    PANTALLA 4: Resultados
 --------------------------------------------------------- */
+function TrophyBadge({ winnerName, winnerColor, bookName }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", margin: "8px 0 26px" }}>
+      <svg width="170" height="190" viewBox="0 0 170 190" style={{ filter: `drop-shadow(0 10px 22px ${winnerColor}66)` }}>
+        <defs>
+          <linearGradient id="trophyGold" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#F6DE94" />
+            <stop offset="45%" stopColor="#D9A93B" />
+            <stop offset="100%" stopColor="#9C6B1E" />
+          </linearGradient>
+        </defs>
+        <path d="M50 18h70v9c0 34-15 53-35 53s-35-19-35-53v-9z" fill="url(#trophyGold)" stroke="#7A4E12" strokeWidth="2" />
+        <path d="M50 26C27 26 19 44 31 58c7 8 16 11 23 10" fill="none" stroke="url(#trophyGold)" strokeWidth="7" strokeLinecap="round" />
+        <path d="M120 26c23 0 31 18 19 32-7 8-16 11-23 10" fill="none" stroke="url(#trophyGold)" strokeWidth="7" strokeLinecap="round" />
+        <rect x="78" y="76" width="14" height="20" fill="url(#trophyGold)" />
+        <path d="M56 96h58l-7 15H63z" fill="url(#trophyGold)" stroke="#7A4E12" strokeWidth="2" />
+        <rect x="46" y="110" width="78" height="13" rx="3" fill="url(#trophyGold)" stroke="#7A4E12" strokeWidth="2" />
+        <circle cx="85" cy="44" r="13" fill="none" stroke="#7A4E12" strokeWidth="2" opacity="0.5" />
+        <path d="M85 36l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z" fill="#7A4E12" opacity="0.6" />
+      </svg>
+      <div style={{
+        marginTop: -6, background: "#16233D", border: `2px solid ${winnerColor}`, borderRadius: 10,
+        padding: "14px 26px", minWidth: 220, boxShadow: `0 6px 18px ${winnerColor}33`,
+      }}>
+        <div className="font-display" style={{ color: winnerColor, fontSize: "clamp(20px, 5.5vw, 26px)", fontWeight: 700 }}>
+          {winnerName}
+        </div>
+        <div className="font-ui" style={{ color: "#B8A98A", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 6 }}>
+          Campeón de
+        </div>
+        <div className="font-display" style={{ color: "#D9A93B", fontSize: "clamp(16px, 4.5vw, 20px)", fontWeight: 700, marginTop: 2 }}>
+          {bookName}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ResultsScreen({ winner, teamName, teamColor, scores, total, book, onRematch, onNewTeams }) {
+  const answeredCount = (team) => (team === 1 ? Math.ceil(total / 2) : Math.floor(total / 2));
+  const incorrectCount = (team) => Math.max(0, answeredCount(team) - scores[team]);
+
   return (
     <div style={{ ...styles.container, textAlign: "center" }} className="fade-in">
       {winner !== "empate" && (
         <Confetti colors={[teamColor(winner), "#B8892B", "#F5EFE0", teamColor(winner === 1 ? 2 : 1)]} />
       )}
-      <RoseWindow size={110} colorA={teamColor(1)} colorB={teamColor(2)} />
 
       {winner === "empate" ? (
         <>
+          <RoseWindow size={110} colorA={teamColor(1)} colorB={teamColor(2)} />
           <h1 className="font-display" style={styles.h1}>¡Empate!</h1>
           <p className="font-body" style={styles.subtitle}>Ambos equipos demostraron conocer bien {book?.name}.</p>
         </>
       ) : (
-        <>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
-            <Crown size={34} color={teamColor(winner)} />
-          </div>
-          <h1 className="font-display" style={{ ...styles.h1, color: teamColor(winner) }}>{teamName(winner)} gana</h1>
-          <p className="font-body" style={styles.subtitle}>Con el mejor dominio del libro de {book?.name}.</p>
-        </>
+        <TrophyBadge winnerName={teamName(winner)} winnerColor={teamColor(winner)} bookName={book?.name} />
       )}
 
       <div style={styles.resultsRow}>
-        <ResultCard name={teamName(1)} color={teamColor(1)} score={scores[1]} total={total} />
-        <ResultCard name={teamName(2)} color={teamColor(2)} score={scores[2]} total={total} />
+        <AnswerStatsCard name={teamName(1)} color={teamColor(1)} score={scores[1]} total={total} correct={scores[1]} incorrect={incorrectCount(1)} />
+        <AnswerStatsCard name={teamName(2)} color={teamColor(2)} score={scores[2]} total={total} correct={scores[2]} incorrect={incorrectCount(2)} />
       </div>
 
       <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 32, flexWrap: "wrap" }}>
@@ -2277,11 +2357,15 @@ function ResultsScreen({ winner, teamName, teamColor, scores, total, book, onRem
   );
 }
 
-function ResultCard({ name, color, score, total }) {
+function AnswerStatsCard({ name, color, score, total, correct, incorrect }) {
   return (
-    <div style={{ ...styles.card, borderColor: color, minWidth: 160 }}>
+    <div style={{ ...styles.card, borderColor: color, minWidth: 170 }}>
       <div className="font-ui" style={{ fontSize: 13, color, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>{name}</div>
       <div className="font-display" style={{ fontSize: 40, color: "#F5EFE0" }}>{score}<span style={{ fontSize: 18, color: "#8FA0B8" }}>/{total}</span></div>
+      <div className="font-ui" style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 12, fontSize: 13 }}>
+        <span style={{ color: "#4CA98D", fontWeight: 700 }}>✔ {correct} correctas</span>
+        <span style={{ color: "#C0405A", fontWeight: 700 }}>✘ {incorrect} incorrectas</span>
+      </div>
     </div>
   );
 }
@@ -2420,6 +2504,17 @@ function RemotePlayerApp({ code, team }) {
   const isMyTurn = isQuestion && gameState.turn === team;
   const currentKey = isQuestion ? `${gameState.qIndex}-${gameState.turn}` : null;
   const hasAnswered = isQuestion && answeredForKey === currentKey;
+
+  // Reproduce el sonido de correcto/incorrecto una sola vez cuando llega la
+  // retroalimentación de esta pregunta (evita repetirlo si el mensaje se reenvía).
+  const playedFeedbackKeyRef = useRef(null);
+  useEffect(() => {
+    if (!isMyTurn || !isQuestion || !gameState.showFeedback) return;
+    if (playedFeedbackKeyRef.current === currentKey) return;
+    playedFeedbackKeyRef.current = currentKey;
+    if (gameState.selected === gameState.correctIndex) playCorrectSound();
+    else playIncorrectSound();
+  }, [isMyTurn, isQuestion, gameState?.showFeedback, currentKey]);
 
   const [localTimeLeft, setLocalTimeLeft] = useState(null);
   useEffect(() => {
