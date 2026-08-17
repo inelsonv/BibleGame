@@ -1,4 +1,4 @@
-const { useState, useMemo, useEffect } = React;
+const { useState, useMemo, useEffect, useRef } = React;
 
 /* ---------------------------------------------------------
    ÍCONOS (SVG propios, sin dependencias externas)
@@ -30,6 +30,9 @@ const ListOrdered = (p) => <Icon {...p}><path d="M10 6h11" /><path d="M10 12h11"
 const BarChart3 = (p) => <Icon {...p}><path d="M3 3v18h18" /><path d="M7 16v-4" /><path d="M12 16V8" /><path d="M17 16v-7" /></Icon>;
 const Maximize = (p) => <Icon {...p}><path d="M8 3H3v5" /><path d="M16 3h5v5" /><path d="M21 16v5h-5" /><path d="M3 16v5h5" /></Icon>;
 const Minimize = (p) => <Icon {...p}><path d="M8 3v5H3" /><path d="M16 3v5h5" /><path d="M21 16h-5v5" /><path d="M3 16h5v5" /></Icon>;
+const Smartphone = (p) => <Icon {...p}><rect x="6" y="2" width="12" height="20" rx="2" /><path d="M11 18h2" /></Icon>;
+const Copy = (p) => <Icon {...p}><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></Icon>;
+const Wifi = (p) => <Icon {...p}><path d="M5 13a10 10 0 0 1 14 0" /><path d="M8.5 16.5a5 5 0 0 1 7 0" /><path d="M2 9a15 15 0 0 1 20 0" /><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none" /></Icon>;
 
 /* ---------------------------------------------------------
    DATOS: banco de preguntas por libro bíblico
@@ -165,6 +168,33 @@ const BIBLE_API_ABBREVS = [
 ];
 const BIBLE_TEXT_SOURCE_URL = "https://raw.githubusercontent.com/thiagobodruk/bible/master/json/es_rvr.json";
 const bookIdToBibleAbbrev = new Map(BIBLE_BOOKS.map(([id], i) => [id, BIBLE_API_ABBREVS[i]]));
+
+// ---- Modo remoto (pantalla grande + celulares como control) ----
+const REMOTE_PEER_PREFIX = "duelo-biblico-";
+function generateRoomCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sin caracteres ambiguos (0/O, 1/I)
+  let code = "";
+  for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+function getJoinParams() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("join");
+    const team = params.get("team");
+    if (code && (team === "1" || team === "2")) {
+      return { code: code.toUpperCase(), team: Number(team) };
+    }
+  } catch { /* sin acceso a la URL (SSR, etc.) */ }
+  return null;
+}
+function buildJoinUrl(code, team) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("join", code);
+  url.searchParams.set("team", String(team));
+  return url.toString();
+}
 
 let bibleTextPromise = null;
 // Descarga (una sola vez por sesión) el texto completo de la Biblia Reina-Valera
@@ -463,6 +493,77 @@ function App() {
     }
   }
 
+  // ---- Modo remoto: la pantalla actual hace de "anfitrión" y cada equipo
+  // responde desde su propio celular, conectado por WebRTC (PeerJS). ----
+  const [remoteMode, setRemoteMode] = useState("local"); // "local" | "host"
+  const [roomCode, setRoomCode] = useState(null);
+  const [remoteStatus, setRemoteStatus] = useState({ 1: "disconnected", 2: "disconnected" }); // disconnected | connected
+  const [remoteError, setRemoteError] = useState("");
+  const peerRef = useRef(null);
+  const connectionsRef = useRef({ 1: null, 2: null });
+  const remoteHandleAnswerRef = useRef(() => {});
+
+  function sendToTeam(team, payload) {
+    const conn = connectionsRef.current[team];
+    if (conn && conn.open) {
+      try { conn.send(payload); } catch { /* la conexión pudo cerrarse justo antes de enviar */ }
+    }
+  }
+  function broadcastToTeams(payload) {
+    sendToTeam(1, payload);
+    sendToTeam(2, payload);
+  }
+
+  function wireConnection(conn) {
+    conn.on("open", () => {
+      const team = conn.metadata && conn.metadata.team === 2 ? 2 : 1;
+      connectionsRef.current[team] = conn;
+      setRemoteStatus((prev) => ({ ...prev, [team]: "connected" }));
+      conn.on("data", (msg) => {
+        if (msg && msg.type === "answer" && typeof msg.index === "number") {
+          remoteHandleAnswerRef.current(team, msg.index);
+        }
+      });
+      conn.on("close", () => {
+        connectionsRef.current[team] = null;
+        setRemoteStatus((prev) => ({ ...prev, [team]: "disconnected" }));
+      });
+    });
+  }
+
+  function startHosting(attemptsLeft = 5) {
+    if (typeof Peer === "undefined") {
+      setRemoteError("No se pudo cargar el módulo de conexión remota. Verifica tu conexión a internet.");
+      return;
+    }
+    setRemoteError("");
+    const code = generateRoomCode();
+    const peer = new Peer(REMOTE_PEER_PREFIX + code);
+    peerRef.current = peer;
+    peer.on("open", () => setRoomCode(code));
+    peer.on("connection", wireConnection);
+    peer.on("error", (err) => {
+      if (err && err.type === "unavailable-id" && attemptsLeft > 0) {
+        peer.destroy();
+        startHosting(attemptsLeft - 1);
+      } else {
+        setRemoteError("No se pudo iniciar el modo remoto. Revisa tu conexión a internet e intenta de nuevo.");
+      }
+    });
+  }
+
+  function stopHosting() {
+    connectionsRef.current = { 1: null, 2: null };
+    setRemoteStatus({ 1: "disconnected", 2: "disconnected" });
+    setRoomCode(null);
+    if (peerRef.current) {
+      peerRef.current.destroy();
+      peerRef.current = null;
+    }
+  }
+
+  useEffect(() => () => stopHosting(), []); // limpiar la conexión al desmontar la app
+
   // Cargar la biblioteca guardada (preguntas base + propias, con cualquier edición previa)
   useEffect(() => {
     let cancelled = false;
@@ -534,7 +635,12 @@ function App() {
 
   function goToBookSelect() {
     if (!team1Name.trim() || !team2Name.trim()) return;
-    setScreen("book");
+    if (remoteMode === "host") {
+      startHosting();
+      setScreen("remote-host");
+    } else {
+      setScreen("book");
+    }
   }
 
   function openManage(fromScreen) {
@@ -560,6 +666,34 @@ function App() {
     setScreen("game");
   }
 
+  // Transmite el estado de la pregunta actual a ambos celulares conectados
+  // cada vez que algo relevante cambia (nueva pregunta, turno, respuesta...).
+  useEffect(() => {
+    if (remoteMode !== "host" || screen !== "game" || !currentQ) return;
+    const timerSeconds = difficultyTimers[currentQ.difficulty] ?? difficultyTimers[1] ?? 20;
+    broadcastToTeams({
+      type: "question",
+      bookName: book?.name,
+      qIndex, total: questions.length,
+      turn, difficulty: currentQ.difficulty, timerSeconds,
+      options: currentQ.options,
+      showFeedback, selected, correctIndex: showFeedback ? currentQ.correct : null,
+      scores, teamNames: { 1: teamName(1), 2: teamName(2) },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteMode, screen, qIndex, turn, showFeedback, selected, scores]);
+
+  // Avisa a los celulares cuando termina el duelo, con el resultado final.
+  useEffect(() => {
+    if (remoteMode !== "host" || screen !== "results") return;
+    broadcastToTeams({
+      type: "results",
+      scores, teamNames: { 1: teamName(1), 2: teamName(2) },
+      winner: scores[1] === scores[2] ? "empate" : scores[1] > scores[2] ? 1 : 2,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteMode, screen]);
+
   function handleAnswer(idx) {
     if (showFeedback) return;
     setSelected(idx);
@@ -568,6 +702,13 @@ function App() {
       setScores((s) => ({ ...s, [turn]: s[turn] + 1 }));
     }
   }
+
+  // Mantiene siempre disponible, para los mensajes que lleguen por WebRTC
+  // desde los celulares, una versión actualizada de handleAnswer que valida
+  // que el equipo que responde sea el que tiene el turno.
+  remoteHandleAnswerRef.current = (team, idx) => {
+    if (screen === "game" && team === turn && !showFeedback) handleAnswer(idx);
+  };
 
   function nextQuestion() {
     if (qIndex + 1 < questions.length) {
@@ -586,6 +727,8 @@ function App() {
     setTeam2Name("");
     setBookId(null);
     setQuestions([]);
+    stopHosting();
+    setRemoteMode("local");
   }
 
   function rematchSameTeams() {
@@ -665,9 +808,22 @@ function App() {
           team1Color={team1Color} setTeam1Color={setTeam1Color} team1Icon={team1Icon} setTeam1Icon={setTeam1Icon}
           team2Color={team2Color} setTeam2Color={setTeam2Color} team2Icon={team2Icon} setTeam2Icon={setTeam2Icon}
           customCount={customCount}
+          remoteMode={remoteMode} setRemoteMode={setRemoteMode}
           onManage={() => openManage("setup")}
           onSettings={() => openSettings("setup")}
           onNext={goToBookSelect}
+        />
+      )}
+
+      {screen === "remote-host" && (
+        <RemoteHostScreen
+          roomCode={roomCode}
+          remoteStatus={remoteStatus}
+          remoteError={remoteError}
+          team1Name={teamName(1)} team2Name={teamName(2)}
+          team1Color={team1Color} team2Color={team2Color}
+          onContinue={() => setScreen("book")}
+          onBack={() => { stopHosting(); setRemoteMode("local"); setScreen("setup"); }}
         />
       )}
 
@@ -724,6 +880,8 @@ function App() {
           feedbackDisplaySeconds={feedbackDisplaySeconds}
           verseDisplaySeconds={verseDisplaySeconds}
           narrationEnabled={narrationEnabled}
+          remoteMode={remoteMode}
+          remoteStatus={remoteStatus}
           onAnswer={handleAnswer}
           onNext={nextQuestion}
         />
@@ -749,7 +907,7 @@ function App() {
 /* ---------------------------------------------------------
    PANTALLA 1: Configurar equipos
 --------------------------------------------------------- */
-function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Color, setTeam1Color, team1Icon, setTeam1Icon, team2Color, setTeam2Color, team2Icon, setTeam2Icon, customCount, onManage, onSettings, onNext }) {
+function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Color, setTeam1Color, team1Icon, setTeam1Icon, team2Color, setTeam2Color, team2Icon, setTeam2Icon, customCount, remoteMode, setRemoteMode, onManage, onSettings, onNext }) {
   const canContinue = team1Name.trim() && team2Name.trim();
   return (
     <div style={styles.container} className="fade-in">
@@ -758,6 +916,45 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
         <h1 className="font-display" style={styles.h1}>Debate Bíblico</h1>
         <p className="font-body" style={styles.subtitle}>Dos equipos. Un libro de la Escritura. Que gane el que más conoce.</p>
       </header>
+
+      <div style={{ ...styles.card, maxWidth: 420, margin: "0 auto 24px" }}>
+        <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12 }}>
+          <Smartphone size={16} /> ¿Cómo van a responder los equipos?
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button" className="font-ui"
+            onClick={() => setRemoteMode("local")}
+            aria-pressed={remoteMode === "local"}
+            style={{
+              flex: 1, padding: "10px 8px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700,
+              background: remoteMode === "local" ? "#B8892B" : "rgba(255,255,255,0.04)",
+              color: remoteMode === "local" ? "#0F1A2E" : "#B8A98A",
+              border: remoteMode === "local" ? "1.5px solid #B8892B" : "1.5px solid #3A5578",
+            }}
+          >
+            En esta pantalla
+          </button>
+          <button
+            type="button" className="font-ui"
+            onClick={() => setRemoteMode("host")}
+            aria-pressed={remoteMode === "host"}
+            style={{
+              flex: 1, padding: "10px 8px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700,
+              background: remoteMode === "host" ? "#B8892B" : "rgba(255,255,255,0.04)",
+              color: remoteMode === "host" ? "#0F1A2E" : "#B8A98A",
+              border: remoteMode === "host" ? "1.5px solid #B8892B" : "1.5px solid #3A5578",
+            }}
+          >
+            Cada equipo desde su celular
+          </button>
+        </div>
+        {remoteMode === "host" && (
+          <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 10 }}>
+            Esta pantalla mostrará la pregunta y el versículo; cada equipo tocará su respuesta desde su propio teléfono.
+          </div>
+        )}
+      </div>
 
       <div style={styles.teamGrid}>
         <TeamCard
@@ -790,7 +987,7 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
           onClick={onNext}
           disabled={!canContinue}
         >
-          Elegir libro bíblico <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
+          {remoteMode === "host" ? "Conectar celulares" : "Elegir libro bíblico"} <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
         </button>
 
         <div style={{ display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap", marginTop: 16 }}>
@@ -813,6 +1010,112 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function RemoteHostScreen({ roomCode, remoteStatus, remoteError, team1Name, team2Name, team1Color, team2Color, onContinue, onBack }) {
+  const [copiedTeam, setCopiedTeam] = useState(null);
+
+  function copyLink(team) {
+    if (!roomCode) return;
+    const url = buildJoinUrl(roomCode, team);
+    navigator.clipboard?.writeText(url).then(() => {
+      setCopiedTeam(team);
+      setTimeout(() => setCopiedTeam((prev) => (prev === team ? null : prev)), 2000);
+    }).catch(() => {});
+  }
+
+  const bothConnected = remoteStatus[1] === "connected" && remoteStatus[2] === "connected";
+
+  return (
+    <div style={styles.container} className="fade-in">
+      <button
+        className="font-ui"
+        onClick={onBack}
+        style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#B8A98A", fontSize: 14, cursor: "pointer", marginBottom: 18 }}
+      >
+        <ArrowLeft size={16} /> Volver
+      </button>
+
+      <header style={{ textAlign: "center", marginBottom: 24 }}>
+        <Smartphone size={40} color="#B8892B" />
+        <h1 className="font-display" style={{ ...styles.h1, marginTop: 10 }}>Conecta los celulares</h1>
+        <p className="font-body" style={styles.subtitle}>
+          Envía a cada equipo el enlace de abajo (o que lo escriban en su navegador). Esta pantalla mostrará las preguntas y el versículo.
+        </p>
+      </header>
+
+      {remoteError && (
+        <div className="font-ui" style={{ ...styles.card, maxWidth: 480, margin: "0 auto 20px", borderColor: "#8B2E3F", color: "#E88", fontSize: 13.5, textAlign: "center" }}>
+          {remoteError}
+        </div>
+      )}
+
+      {!roomCode && !remoteError && (
+        <p className="font-ui" style={{ textAlign: "center", color: "#8FA0B8" }}>Preparando la sala…</p>
+      )}
+
+      {roomCode && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 480, margin: "0 auto" }}>
+          {[1, 2].map((team) => {
+            const name = team === 1 ? team1Name : team2Name;
+            const color = team === 1 ? team1Color : team2Color;
+            const connected = remoteStatus[team] === "connected";
+            const url = buildJoinUrl(roomCode, team);
+            return (
+              <div key={team} style={{ ...styles.card, maxWidth: "none" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "#F5EFE0", fontSize: 15 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: color, display: "inline-block" }} />
+                    {name}
+                  </div>
+                  <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: connected ? "#4CA98D" : "#B8A98A" }}>
+                    <Wifi size={14} /> {connected ? "Conectado" : "Esperando…"}
+                  </div>
+                </div>
+                <div className="font-ui" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{
+                    flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    background: "#0F1A2E", border: "1.5px solid #3A5578", borderRadius: 7, padding: "8px 10px", fontSize: 12.5, color: "#B8A98A",
+                  }}>
+                    {url}
+                  </div>
+                  <button
+                    type="button" className="font-ui"
+                    onClick={() => copyLink(team)}
+                    style={{
+                      flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, padding: "8px 12px", borderRadius: 7, cursor: "pointer",
+                      background: copiedTeam === team ? "#4CA98D" : "rgba(184,137,43,0.14)",
+                      border: `1.5px solid ${copiedTeam === team ? "#4CA98D" : "#B8892B"}`,
+                      color: copiedTeam === team ? "#0F1A2E" : "#D9A93B", fontSize: 12.5, fontWeight: 700,
+                    }}
+                  >
+                    <Copy size={13} /> {copiedTeam === team ? "¡Copiado!" : "Copiar"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", textAlign: "center", marginTop: 4 }}>
+            Código de sala: <span style={{ color: "#D9A93B", fontWeight: 700, letterSpacing: "0.1em" }}>{roomCode}</span>
+          </div>
+
+          <button
+            className="font-ui"
+            style={{ ...styles.primaryBtn, marginTop: 10 }}
+            onClick={onContinue}
+          >
+            {bothConnected ? "Continuar" : "Continuar de todos modos"} <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
+          </button>
+          {!bothConnected && (
+            <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", textAlign: "center" }}>
+              Los equipos que no se conecten podrán responder aquí mismo, en esta pantalla, como respaldo.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1632,7 +1935,7 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
 /* ---------------------------------------------------------
    PANTALLA 3: Juego
 --------------------------------------------------------- */
-function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, difficultyTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, onAnswer, onNext }) {
+function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, difficultyTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, remoteMode, remoteStatus, onAnswer, onNext }) {
   const activeColor = teamColor(turn);
   const timerSeconds = difficultyTimers[currentQ?.difficulty] ?? difficultyTimers[1] ?? 20;
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
@@ -1697,12 +2000,12 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
     <div style={styles.container} className="fade-in">
       {/* Marcador */}
       <div style={styles.scoreBar}>
-        <ScorePill name={teamName(1)} icon={teamIcon(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" />
+        <ScorePill name={teamName(1)} icon={teamIcon(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" connected={remoteMode === "host" ? remoteStatus[1] === "connected" : null} />
         <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(10px, 2.6vw, 12.5px)", flex: "0 1 auto", minWidth: 0, padding: "6px 4px 0" }}>
           <div className="font-display" style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "clamp(17px, 6vw, 26px)" }}>{book?.name}</div>
           <div style={{ marginTop: 2 }}>Pregunta {qIndex + 1} de {total}</div>
         </div>
-        <ScorePill name={teamName(2)} icon={teamIcon(2)} color={teamColor(2)} score={scores[2]} active={turn === 2} align="right" />
+        <ScorePill name={teamName(2)} icon={teamIcon(2)} color={teamColor(2)} score={scores[2]} active={turn === 2} align="right" connected={remoteMode === "host" ? remoteStatus[2] === "connected" : null} />
       </div>
 
       {/* Barra de progreso */}
@@ -1813,7 +2116,7 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
   );
 }
 
-function ScorePill({ name, icon, color, score, active, align }) {
+function ScorePill({ name, icon, color, score, active, align, connected }) {
   const isRight = align === "right";
   return (
     <div style={{
@@ -1823,8 +2126,19 @@ function ScorePill({ name, icon, color, score, active, align }) {
       <div className="font-ui" style={{
         fontSize: "clamp(16px, 5vw, 23px)", color: "#F5EFE0", fontWeight: 800, lineHeight: 1.15,
         textAlign: isRight ? "right" : "left", maxWidth: "38vw", wordBreak: "break-word",
+        display: "flex", alignItems: "center", gap: 6, flexDirection: isRight ? "row-reverse" : "row",
       }}>
-        <span aria-hidden="true">{icon.symbol} </span>{name}
+        <span aria-hidden="true">{icon.symbol} {name}</span>
+        {connected !== null && connected !== undefined && (
+          <span
+            title={connected ? "Celular conectado" : "Esperando el celular de este equipo"}
+            style={{
+              width: 9, height: 9, borderRadius: "50%", flex: "0 0 auto",
+              background: connected ? "#4CA98D" : "#8B2E3F",
+              boxShadow: connected ? "0 0 6px #4CA98D" : "none",
+            }}
+          />
+        )}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: isRight ? "row-reverse" : "row" }}>
         <div style={{
@@ -2031,5 +2345,207 @@ const styles = {
   },
 };
 
+function RemotePlayerApp({ code, team }) {
+  const [status, setStatus] = useState("connecting"); // connecting | connected | error | closed
+  const [errorMsg, setErrorMsg] = useState("");
+  const [gameState, setGameState] = useState(null); // último mensaje recibido del anfitrión
+  const [answeredForKey, setAnsweredForKey] = useState(null);
+  const peerRef = useRef(null);
+  const connRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof Peer === "undefined") {
+      setStatus("error");
+      setErrorMsg("No se pudo cargar el módulo de conexión. Verifica tu internet y recarga la página.");
+      return;
+    }
+    const peer = new Peer();
+    peerRef.current = peer;
+    peer.on("open", () => {
+      const conn = peer.connect(REMOTE_PEER_PREFIX + code, { metadata: { team }, reliable: true });
+      connRef.current = conn;
+      conn.on("open", () => setStatus("connected"));
+      conn.on("data", (msg) => setGameState(msg));
+      conn.on("close", () => setStatus("closed"));
+      conn.on("error", () => {
+        setStatus("error");
+        setErrorMsg("Se perdió la conexión con la pantalla principal.");
+      });
+    });
+    peer.on("error", () => {
+      setStatus("error");
+      setErrorMsg("No se pudo conectar. Verifica que el código sea correcto y que la pantalla principal siga abierta.");
+    });
+    return () => peer.destroy();
+  }, [code, team]);
+
+  const isQuestion = gameState && gameState.type === "question";
+  const isMyTurn = isQuestion && gameState.turn === team;
+  const currentKey = isQuestion ? `${gameState.qIndex}-${gameState.turn}` : null;
+  const hasAnswered = isQuestion && answeredForKey === currentKey;
+
+  const [localTimeLeft, setLocalTimeLeft] = useState(null);
+  useEffect(() => {
+    if (!isMyTurn || (isQuestion && gameState.showFeedback) || hasAnswered) {
+      setLocalTimeLeft(null);
+      return;
+    }
+    setLocalTimeLeft(gameState.timerSeconds);
+    const interval = setInterval(() => setLocalTimeLeft((t) => (t > 0 ? t - 1 : 0)), 1000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentKey, isMyTurn, isQuestion && gameState.showFeedback, hasAnswered]);
+
+  function submitAnswer(idx) {
+    if (!connRef.current || !connRef.current.open || hasAnswered) return;
+    connRef.current.send({ type: "answer", index: idx });
+    setAnsweredForKey(currentKey);
+  }
+
+  const myName = gameState?.teamNames?.[team] || `Equipo ${team}`;
+
+  return (
+    <div style={{ ...styles.page, minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(16px, 5vw, 28px)" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; }
+        .font-display { font-family: 'Cinzel', serif; letter-spacing: 0.02em; }
+        .font-ui { font-family: 'Inter', sans-serif; }
+        body { margin: 0; background: #0A101C; }
+      `}</style>
+
+      <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
+        {status === "connecting" && (
+          <>
+            <Wifi size={40} color="#B8892B" />
+            <p className="font-ui" style={{ color: "#B8A98A", marginTop: 14, fontSize: 15 }}>Conectando con la pantalla principal…</p>
+          </>
+        )}
+
+        {status === "error" && (
+          <>
+            <div style={{ color: "#C0405A", fontSize: 40 }}>⚠️</div>
+            <p className="font-ui" style={{ color: "#F5EFE0", marginTop: 14, fontSize: 15 }}>{errorMsg}</p>
+            <button className="font-ui" style={{ ...styles.primaryBtn, marginTop: 18 }} onClick={() => window.location.reload()}>
+              Reintentar
+            </button>
+          </>
+        )}
+
+        {status === "closed" && (
+          <>
+            <p className="font-ui" style={{ color: "#F5EFE0", fontSize: 15 }}>La pantalla principal cerró la conexión.</p>
+            <button className="font-ui" style={{ ...styles.primaryBtn, marginTop: 18 }} onClick={() => window.location.reload()}>
+              Reconectar
+            </button>
+          </>
+        )}
+
+        {status === "connected" && !gameState && (
+          <>
+            <Wifi size={40} color="#4CA98D" />
+            <p className="font-ui" style={{ color: "#F5EFE0", marginTop: 14, fontSize: 16, fontWeight: 700 }}>Conectado como {myName}</p>
+            <p className="font-ui" style={{ color: "#8FA0B8", marginTop: 8, fontSize: 13.5 }}>Esperando que empiece el duelo…</p>
+          </>
+        )}
+
+        {status === "connected" && gameState?.type === "results" && (
+          <>
+            <h1 className="font-display" style={{ ...styles.h1, fontSize: "clamp(24px, 8vw, 32px)" }}>
+              {gameState.winner === "empate" ? "¡Empate!" : `¡${gameState.teamNames[gameState.winner]} ganó!`}
+            </h1>
+            <div className="font-ui" style={{ marginTop: 18, display: "flex", justifyContent: "center", gap: 24 }}>
+              {[1, 2].map((t) => (
+                <div key={t}>
+                  <div style={{ fontSize: 13, color: "#8FA0B8" }}>{gameState.teamNames[t]}</div>
+                  <div className="font-display" style={{ fontSize: 30, color: "#D9A93B", fontWeight: 700 }}>{gameState.scores[t]}</div>
+                </div>
+              ))}
+            </div>
+            <p className="font-ui" style={{ color: "#8FA0B8", marginTop: 20, fontSize: 13 }}>Mira la pantalla principal para más detalles.</p>
+          </>
+        )}
+
+        {status === "connected" && isQuestion && (
+          <>
+            <div className="font-ui" style={{ color: "#B8892B", fontSize: 12.5, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+              {gameState.bookName} · Pregunta {gameState.qIndex + 1} de {gameState.total}
+            </div>
+            <div className="font-ui" style={{ marginTop: 4, marginBottom: 22, fontSize: 12, color: difficultyInfo(gameState.difficulty).color, fontWeight: 700 }}>
+              {difficultyInfo(gameState.difficulty).label}
+            </div>
+
+            {!isMyTurn && (
+              <div style={{ marginTop: 30 }}>
+                <p className="font-ui" style={{ color: "#F5EFE0", fontSize: 17, fontWeight: 700 }}>
+                  Turno de {gameState.teamNames[gameState.turn]}
+                </p>
+                <p className="font-ui" style={{ color: "#8FA0B8", marginTop: 8, fontSize: 13.5 }}>Espera tu turno, mira la pantalla principal.</p>
+              </div>
+            )}
+
+            {isMyTurn && gameState.showFeedback && (
+              <div style={{ marginTop: 30 }}>
+                {gameState.selected === -1 ? (
+                  <p className="font-display" style={{ color: "#C0405A", fontSize: 22, fontWeight: 700 }}>⏱ Se acabó el tiempo</p>
+                ) : gameState.selected === gameState.correctIndex ? (
+                  <p className="font-display" style={{ color: "#1F6F5C", fontSize: 24, fontWeight: 700 }}>¡Correcto! 🎉</p>
+                ) : (
+                  <p className="font-display" style={{ color: "#C0405A", fontSize: 24, fontWeight: 700 }}>Incorrecto</p>
+                )}
+                <p className="font-ui" style={{ color: "#8FA0B8", marginTop: 10, fontSize: 13 }}>Mira la pantalla principal para el versículo.</p>
+              </div>
+            )}
+
+            {isMyTurn && !gameState.showFeedback && hasAnswered && (
+              <div style={{ marginTop: 30 }}>
+                <p className="font-ui" style={{ color: "#D9A93B", fontSize: 15, fontWeight: 700 }}>Respuesta enviada</p>
+                <p className="font-ui" style={{ color: "#8FA0B8", marginTop: 8, fontSize: 13 }}>Esperando confirmación…</p>
+              </div>
+            )}
+
+            {isMyTurn && !gameState.showFeedback && !hasAnswered && (
+              <div>
+                {localTimeLeft !== null && (
+                  <div className="font-display" style={{ color: localTimeLeft <= 5 ? "#C0405A" : "#B8892B", fontSize: 20, fontWeight: 700, marginBottom: 14 }}>
+                    {localTimeLeft}s
+                  </div>
+                )}
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {gameState.options.map((opt, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className="font-ui"
+                      onClick={() => submitAnswer(idx)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 12, textAlign: "left",
+                        padding: "16px 16px", borderRadius: 12, cursor: "pointer",
+                        background: "rgba(255,255,255,0.04)", border: "1.5px solid #3A5578", color: "#F5EFE0",
+                        fontSize: 16, fontWeight: 600,
+                      }}
+                    >
+                      <span className="font-display" style={{
+                        width: 32, height: 32, borderRadius: 8, flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center",
+                        background: "rgba(184,137,43,0.15)", border: "1.5px solid #B8892B", color: "#D4AF5A", fontSize: 14, fontWeight: 700,
+                      }}>
+                        {LETTERS[idx]}
+                      </span>
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const rootEl = document.getElementById("root");
-ReactDOM.createRoot(rootEl).render(<App />);
+const remoteJoinParams = getJoinParams();
+ReactDOM.createRoot(rootEl).render(
+  remoteJoinParams ? <RemotePlayerApp code={remoteJoinParams.code} team={remoteJoinParams.team} /> : <App />
+);
