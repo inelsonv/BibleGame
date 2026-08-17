@@ -1014,6 +1014,37 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
   );
 }
 
+function QRCodeBox({ value, size = 128 }) {
+  const containerRef = useRef(null);
+  const [ready, setReady] = useState(true);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    if (typeof QRCode === "undefined") {
+      setReady(false);
+      return;
+    }
+    containerRef.current.innerHTML = ""; // limpiar el QR anterior antes de dibujar el nuevo
+    // eslint-disable-next-line no-new
+    new QRCode(containerRef.current, {
+      text: value,
+      width: size,
+      height: size,
+      colorDark: "#0F1A2E",
+      colorLight: "#F5EFE0",
+      correctLevel: QRCode.CorrectLevel.M,
+    });
+  }, [value, size]);
+
+  if (!ready) return null;
+  return (
+    <div
+      ref={containerRef}
+      style={{ display: "inline-flex", borderRadius: 10, overflow: "hidden", lineHeight: 0, padding: 6, background: "#F5EFE0" }}
+    />
+  );
+}
+
 function RemoteHostScreen({ roomCode, remoteStatus, remoteError, team1Name, team2Name, team1Color, team2Color, onContinue, onBack }) {
   const [copiedTeam, setCopiedTeam] = useState(null);
 
@@ -1074,25 +1105,31 @@ function RemoteHostScreen({ roomCode, remoteStatus, remoteError, team1Name, team
                     <Wifi size={14} /> {connected ? "Conectado" : "Esperando…"}
                   </div>
                 </div>
-                <div className="font-ui" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <div style={{
-                    flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    background: "#0F1A2E", border: "1.5px solid #3A5578", borderRadius: 7, padding: "8px 10px", fontSize: 12.5, color: "#B8A98A",
-                  }}>
-                    {url}
+                <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+                  <QRCodeBox value={url} size={104} />
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <div className="font-ui" style={{ fontSize: 11, color: "#8FA0B8", marginBottom: 6 }}>
+                      Escanea el código o comparte el enlace:
+                    </div>
+                    <div className="font-ui" style={{
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      background: "#0F1A2E", border: "1.5px solid #3A5578", borderRadius: 7, padding: "8px 10px", fontSize: 12.5, color: "#B8A98A", marginBottom: 8,
+                    }}>
+                      {url}
+                    </div>
+                    <button
+                      type="button" className="font-ui"
+                      onClick={() => copyLink(team)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5, padding: "8px 12px", borderRadius: 7, cursor: "pointer",
+                        background: copiedTeam === team ? "#4CA98D" : "rgba(184,137,43,0.14)",
+                        border: `1.5px solid ${copiedTeam === team ? "#4CA98D" : "#B8892B"}`,
+                        color: copiedTeam === team ? "#0F1A2E" : "#D9A93B", fontSize: 12.5, fontWeight: 700,
+                      }}
+                    >
+                      <Copy size={13} /> {copiedTeam === team ? "¡Copiado!" : "Copiar enlace"}
+                    </button>
                   </div>
-                  <button
-                    type="button" className="font-ui"
-                    onClick={() => copyLink(team)}
-                    style={{
-                      flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, padding: "8px 12px", borderRadius: 7, cursor: "pointer",
-                      background: copiedTeam === team ? "#4CA98D" : "rgba(184,137,43,0.14)",
-                      border: `1.5px solid ${copiedTeam === team ? "#4CA98D" : "#B8892B"}`,
-                      color: copiedTeam === team ? "#0F1A2E" : "#D9A93B", fontSize: 12.5, fontWeight: 700,
-                    }}
-                  >
-                    <Copy size={13} /> {copiedTeam === team ? "¡Copiado!" : "Copiar"}
-                  </button>
                 </div>
               </div>
             );
