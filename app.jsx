@@ -155,7 +155,7 @@ const BIBLE_BOOKS = [
   ["mateo","Mateo","Nuevo Testamento"],["marcos","Marcos","Nuevo Testamento"],["lucas","Lucas","Nuevo Testamento"],["juan","Juan","Nuevo Testamento"],["hechos","Hechos","Nuevo Testamento"],["romanos","Romanos","Nuevo Testamento"],["1-corintios","1 Corintios","Nuevo Testamento"],["2-corintios","2 Corintios","Nuevo Testamento"],["galatas","Galatas","Nuevo Testamento"],["efesios","Efesios","Nuevo Testamento"],["filipenses","Filipenses","Nuevo Testamento"],["colosenses","Colosenses","Nuevo Testamento"],["1-tesalonicenses","1 Tesalonicenses","Nuevo Testamento"],["2-tesalonicenses","2 Tesalonicenses","Nuevo Testamento"],["1-timoteo","1 Timoteo","Nuevo Testamento"],["2-timoteo","2 Timoteo","Nuevo Testamento"],["tito","Tito","Nuevo Testamento"],["filemon","Filemon","Nuevo Testamento"],["hebreos","Hebreos","Nuevo Testamento"],["santiago","Santiago","Nuevo Testamento"],["1-pedro","1 Pedro","Nuevo Testamento"],["2-pedro","2 Pedro","Nuevo Testamento"],["1-juan","1 Juan","Nuevo Testamento"],["2-juan","2 Juan","Nuevo Testamento"],["3-juan","3 Juan","Nuevo Testamento"],["judas","Judas","Nuevo Testamento"],["apocalipsis","Apocalipsis","Nuevo Testamento"],
 ];
 
-const LETTERS = ["A", "B", "C"];
+const LETTERS = ["A", "B", "C", "D"];
 const CUSTOM_BOOK_ID = "personalizado";
 const LIBRARY_STORAGE_KEY = "duelo-biblico:biblioteca";
 
@@ -1523,6 +1523,15 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
     setOpts((prev) => prev.map((o, idx) => (idx === i ? val : o)));
   }
 
+  function addFourthOption() {
+    setOpts((prev) => (prev.length >= 4 ? prev : [...prev, ""]));
+  }
+
+  function removeFourthOption() {
+    setOpts((prev) => (prev.length > 3 ? prev.slice(0, 3) : prev));
+    setCorrect((prev) => (prev === 3 ? 0 : prev));
+  }
+
   function resetForm() {
     setQText("");
     setOpts(["", "", ""]);
@@ -1537,7 +1546,7 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
 
   function addQuestion() {
     if (!canAdd) {
-      setFormError("Completa la pregunta, las 3 opciones, el capítulo, el versículo y su texto antes de agregar.");
+      setFormError(`Completa la pregunta, las ${opts.length} opciones, el capítulo, el versículo y su texto antes de agregar.`);
       return;
     }
     onAddQuestion(selectedBook.id, {
@@ -1558,6 +1567,17 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
 
   function updateEditOpt(i, val) {
     setEditState((prev) => ({ ...prev, opts: prev.opts.map((o, idx) => (idx === i ? val : o)) }));
+  }
+
+  function addFourthOptionEdit() {
+    setEditState((prev) => (prev.opts.length >= 4 ? prev : { ...prev, opts: [...prev.opts, ""] }));
+  }
+
+  function removeFourthOptionEdit() {
+    setEditState((prev) => {
+      if (prev.opts.length <= 3) return prev;
+      return { ...prev, opts: prev.opts.slice(0, 3), correct: prev.correct === 3 ? 0 : prev.correct };
+    });
   }
 
   function saveEdit() {
@@ -1731,9 +1751,33 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
                 value={o}
                 onChange={(e) => updateOpt(i, e.target.value)}
               />
+              {i === 3 && (
+                <button
+                  type="button"
+                  className="font-ui"
+                  onClick={removeFourthOption}
+                  aria-label="Quitar opción D"
+                  style={{ flex: "0 0 auto", background: "none", border: "none", color: "#8FA0B8", cursor: "pointer", padding: 4 }}
+                >
+                  <X size={16} />
+                </button>
+              )}
             </div>
           ))}
         </div>
+        {opts.length < 4 && (
+          <button
+            type="button"
+            className="font-ui"
+            onClick={addFourthOption}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, marginTop: 10, padding: "6px 12px", borderRadius: 7, cursor: "pointer",
+              background: "rgba(184,137,43,0.1)", border: "1.5px dashed #B8892B", color: "#D9A93B", fontSize: 12.5, fontWeight: 700,
+            }}
+          >
+            + Agregar opción D
+          </button>
+        )}
         <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 8 }}>
           Toca la letra de la opción correcta.
         </div>
@@ -1878,9 +1922,33 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
                             value={o}
                             onChange={(e) => updateEditOpt(idx, e.target.value)}
                           />
+                          {idx === 3 && (
+                            <button
+                              type="button"
+                              className="font-ui"
+                              onClick={removeFourthOptionEdit}
+                              aria-label="Quitar opción D"
+                              style={{ flex: "0 0 auto", background: "none", border: "none", color: "#8FA0B8", cursor: "pointer", padding: 4 }}
+                            >
+                              <X size={15} />
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
+                    {editState.opts.length < 4 && (
+                      <button
+                        type="button"
+                        className="font-ui"
+                        onClick={addFourthOptionEdit}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 6, marginTop: 8, padding: "5px 10px", borderRadius: 6, cursor: "pointer",
+                          background: "rgba(184,137,43,0.1)", border: "1.5px dashed #B8892B", color: "#D9A93B", fontSize: 11.5, fontWeight: 700,
+                        }}
+                      >
+                        + Agregar opción D
+                      </button>
+                    )}
                     <label className="font-ui" style={{ fontSize: 11, color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 12, display: "block" }}>Dificultad</label>
                     <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                       {DIFFICULTIES.map((d) => (
