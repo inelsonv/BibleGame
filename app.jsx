@@ -35,6 +35,7 @@ const Copy = (p) => <Icon {...p}><rect x="9" y="9" width="12" height="12" rx="2"
 const Wifi = (p) => <Icon {...p}><path d="M5 13a10 10 0 0 1 14 0" /><path d="M8.5 16.5a5 5 0 0 1 7 0" /><path d="M2 9a15 15 0 0 1 20 0" /><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none" /></Icon>;
 const Share2 = (p) => <Icon {...p}><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="M8.6 13.5l6.8 3.9" /><path d="M15.4 6.6L8.6 10.5" /></Icon>;
 const Download = (p) => <Icon {...p}><path d="M12 3v12" /><path d="M7 10l5 5 5-5" /><path d="M5 21h14" /></Icon>;
+const Camera = (p) => <Icon {...p}><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3.5" /></Icon>;
 // Íconos de marca (usan sus colores propios en vez de currentColor, por eso no reusan <Icon>)
 const InstagramIcon = ({ size = 22 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -566,6 +567,7 @@ function App() {
   const [remoteMode, setRemoteMode] = useState("local"); // "local" | "host"
   const [roomCode, setRoomCode] = useState(null);
   const [remoteStatus, setRemoteStatus] = useState({ 1: "disconnected", 2: "disconnected" }); // disconnected | connected
+  const [teamPhotos, setTeamPhotos] = useState({ 1: null, 2: null });
   const [remoteError, setRemoteError] = useState("");
   const peerRef = useRef(null);
   const connectionsRef = useRef({ 1: null, 2: null });
@@ -590,6 +592,9 @@ function App() {
       conn.on("data", (msg) => {
         if (msg && msg.type === "answer" && typeof msg.index === "number") {
           remoteHandleAnswerRef.current(team, msg.index);
+        }
+        if (msg && msg.type === "photo" && typeof msg.dataUrl === "string") {
+          setTeamPhotos((prev) => ({ ...prev, [team]: msg.dataUrl }));
         }
       });
       conn.on("close", () => {
@@ -623,6 +628,7 @@ function App() {
   function stopHosting() {
     connectionsRef.current = { 1: null, 2: null };
     setRemoteStatus({ 1: "disconnected", 2: "disconnected" });
+    setTeamPhotos({ 1: null, 2: null });
     setRoomCode(null);
     if (peerRef.current) {
       peerRef.current.destroy();
@@ -887,6 +893,7 @@ function App() {
         <RemoteHostScreen
           roomCode={roomCode}
           remoteStatus={remoteStatus}
+          teamPhotos={teamPhotos}
           remoteError={remoteError}
           team1Name={teamName(1)} team2Name={teamName(2)}
           team1Color={team1Color} team2Color={team2Color}
@@ -950,6 +957,7 @@ function App() {
           narrationEnabled={narrationEnabled}
           remoteMode={remoteMode}
           remoteStatus={remoteStatus}
+          teamPhotos={teamPhotos}
           onAnswer={handleAnswer}
           onNext={nextQuestion}
         />
@@ -964,6 +972,7 @@ function App() {
           scores={scores}
           total={questions.length}
           book={book}
+          teamPhotos={remoteMode === "host" ? teamPhotos : null}
           onRematch={rematchSameTeams}
           onNewTeams={playAgain}
         />
@@ -1113,7 +1122,7 @@ function QRCodeBox({ value, size = 128 }) {
   );
 }
 
-function RemoteHostScreen({ roomCode, remoteStatus, remoteError, team1Name, team2Name, team1Color, team2Color, onContinue, onBack }) {
+function RemoteHostScreen({ roomCode, remoteStatus, teamPhotos, remoteError, team1Name, team2Name, team1Color, team2Color, onContinue, onBack }) {
   const [copiedTeam, setCopiedTeam] = useState(null);
 
   function copyLink(team) {
@@ -1172,6 +1181,14 @@ function RemoteHostScreen({ roomCode, remoteStatus, remoteError, team1Name, team
                 <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: connected ? "#4CA98D" : "#B8A98A", marginBottom: 14 }}>
                   <Wifi size={14} /> {connected ? "Conectado" : "Esperando…"}
                 </div>
+
+                {teamPhotos && teamPhotos[team] && (
+                  <img
+                    src={teamPhotos[team]}
+                    alt={`Foto del equipo ${name}`}
+                    style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", border: `2px solid ${color}`, margin: "0 auto 14px" }}
+                  />
+                )}
 
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
                   <QRCodeBox value={url} size={220} />
@@ -2108,7 +2125,7 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
 /* ---------------------------------------------------------
    PANTALLA 3: Juego
 --------------------------------------------------------- */
-function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, difficultyTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, remoteMode, remoteStatus, onAnswer, onNext }) {
+function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, difficultyTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, remoteMode, remoteStatus, teamPhotos, onAnswer, onNext }) {
   const activeColor = teamColor(turn);
   const timerSeconds = difficultyTimers[currentQ?.difficulty] ?? difficultyTimers[1] ?? 20;
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
@@ -2174,12 +2191,12 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
       <div style={styles.container} className="fade-in">
         {/* Marcador */}
         <div style={styles.scoreBar}>
-          <ScorePill name={teamName(1)} icon={teamIcon(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" connected={remoteMode === "host" ? remoteStatus[1] === "connected" : null} />
+          <ScorePill name={teamName(1)} icon={teamIcon(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" connected={remoteMode === "host" ? remoteStatus[1] === "connected" : null} photo={remoteMode === "host" ? teamPhotos?.[1] : null} />
           <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(10px, 2.6vw, 12.5px)", flex: "0 1 auto", minWidth: 0, padding: "6px 4px 0" }}>
             <div className="font-display" style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "clamp(17px, 6vw, 26px)" }}>{book?.name}</div>
             <div style={{ marginTop: 2 }}>Pregunta {qIndex + 1} de {total}</div>
           </div>
-          <ScorePill name={teamName(2)} icon={teamIcon(2)} color={teamColor(2)} score={scores[2]} active={turn === 2} align="right" connected={remoteMode === "host" ? remoteStatus[2] === "connected" : null} />
+          <ScorePill name={teamName(2)} icon={teamIcon(2)} color={teamColor(2)} score={scores[2]} active={turn === 2} align="right" connected={remoteMode === "host" ? remoteStatus[2] === "connected" : null} photo={remoteMode === "host" ? teamPhotos?.[2] : null} />
         </div>
 
         {/* Barra de progreso */}
@@ -2298,7 +2315,7 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
   );
 }
 
-function ScorePill({ name, icon, color, score, active, align, connected }) {
+function ScorePill({ name, icon, color, score, active, align, connected, photo }) {
   const isRight = align === "right";
   return (
     <div style={{
@@ -2323,6 +2340,16 @@ function ScorePill({ name, icon, color, score, active, align, connected }) {
         )}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: isRight ? "row-reverse" : "row" }}>
+        {photo && (
+          <img
+            src={photo}
+            alt={`Foto de ${name}`}
+            style={{
+              width: "clamp(34px, 9vw, 44px)", height: "clamp(34px, 9vw, 44px)", borderRadius: "50%",
+              objectFit: "cover", flex: "0 0 auto", border: `2px solid ${color}`,
+            }}
+          />
+        )}
         <div style={{
           width: "clamp(48px, 14vw, 66px)", height: "clamp(48px, 14vw, 66px)", borderRadius: "50%", background: color,
           display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
@@ -2418,7 +2445,7 @@ function TrophyBadge({ winnerName, winnerColor, bookName }) {
   );
 }
 
-function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName }) {
+function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName, teamPhotos }) {
   const canvasRef = useRef(null);
   const [blob, setBlob] = useState(null);
   const [imageUrl, setImageUrl] = useState(null);
@@ -2439,6 +2466,14 @@ function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName 
       const startY = y - ((lines.length - 1) * lineHeight) / 2;
       lines.forEach((l, i) => ctx.fillText(l, x, startY + i * lineHeight));
     }
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+      });
+    }
     async function draw() {
       try { await document.fonts?.ready; } catch { /* fuentes no disponibles: se usa la tipografía por defecto */ }
       const canvas = canvasRef.current;
@@ -2446,6 +2481,16 @@ function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName 
       const W = 1080, H = 1350;
       canvas.width = W; canvas.height = H;
       const ctx = canvas.getContext("2d");
+
+      const photoImages = {};
+      if (teamPhotos) {
+        for (const t of [1, 2]) {
+          if (teamPhotos[t]) {
+            try { photoImages[t] = await loadImage(teamPhotos[t]); } catch { /* si la foto no carga, se omite sin romper la imagen */ }
+          }
+        }
+      }
+      if (cancelled) return;
 
       const bg = ctx.createRadialGradient(W / 2, 0, 100, W / 2, H, 1500);
       bg.addColorStop(0, "#1F3454"); bg.addColorStop(0.55, "#16233D"); bg.addColorStop(1, "#0A101C");
@@ -2479,6 +2524,17 @@ function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName 
         ctx.fillText(String(scores[t]), x, teamY + 32);
         ctx.font = "700 36px Inter, sans-serif"; ctx.fillStyle = "#F5EFE0";
         drawWrapped(ctx, teamName(t), x, teamY + 210, 300, 42);
+
+        // Foto del equipo, como insignia circular perchada sobre el marcador
+        if (photoImages[t]) {
+          const r = 76, cx = x + 96, cy = teamY - 96;
+          ctx.save();
+          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
+          ctx.drawImage(photoImages[t], cx - r, cy - r, r * 2, r * 2);
+          ctx.restore();
+          ctx.lineWidth = 6; ctx.strokeStyle = "#F5EFE0";
+          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+        }
       });
 
       ctx.font = "500 28px Inter, sans-serif"; ctx.fillStyle = "#8FA0B8";
@@ -2494,7 +2550,7 @@ function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName 
     }
     draw();
     return () => { cancelled = true; };
-  }, [winner, scores, total, bookName]);
+  }, [winner, scores, total, bookName, teamPhotos]);
 
   function downloadImage() {
     if (!imageUrl) return;
@@ -2593,7 +2649,7 @@ function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName 
   );
 }
 
-function ResultsScreen({ winner, teamName, teamColor, scores, total, book, onRematch, onNewTeams }) {
+function ResultsScreen({ winner, teamName, teamColor, scores, total, book, teamPhotos, onRematch, onNewTeams }) {
   const answeredCount = (team) => (team === 1 ? Math.ceil(total / 2) : Math.floor(total / 2));
   const incorrectCount = (team) => Math.max(0, answeredCount(team) - scores[team]);
 
@@ -2618,7 +2674,7 @@ function ResultsScreen({ winner, teamName, teamColor, scores, total, book, onRem
         <AnswerStatsCard name={teamName(2)} color={teamColor(2)} score={scores[2]} total={total} correct={scores[2]} incorrect={incorrectCount(2)} />
       </div>
 
-      <ShareResultCard winner={winner} teamName={teamName} teamColor={teamColor} scores={scores} total={total} bookName={book?.name} />
+      <ShareResultCard winner={winner} teamName={teamName} teamColor={teamColor} scores={scores} total={total} bookName={book?.name} teamPhotos={teamPhotos} />
 
       <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 32, flexWrap: "wrap" }}>
         <button className="font-ui" style={styles.primaryBtn} onClick={onRematch}>
@@ -2748,8 +2804,40 @@ function RemotePlayerApp({ code, team }) {
   const [errorMsg, setErrorMsg] = useState("");
   const [gameState, setGameState] = useState(null); // último mensaje recibido del anfitrión
   const [answeredForKey, setAnsweredForKey] = useState(null);
+  const [teamPhoto, setTeamPhoto] = useState(null);
+  const [photoStatus, setPhotoStatus] = useState("idle"); // idle | processing | sent
   const peerRef = useRef(null);
   const connRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  function handlePhotoFile(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // permite volver a elegir el mismo archivo si se repite la foto
+    if (!file) return;
+    setPhotoStatus("processing");
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = () => {
+      img.onload = () => {
+        // Recorta a cuadrado y reduce el tamaño antes de enviarla por la conexión
+        const SIZE = 320;
+        const canvas = document.createElement("canvas");
+        canvas.width = SIZE; canvas.height = SIZE;
+        const ctx = canvas.getContext("2d");
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
+        setTeamPhoto(dataUrl);
+        setPhotoStatus("sent");
+        if (connRef.current && connRef.current.open) {
+          connRef.current.send({ type: "photo", dataUrl });
+        }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
 
   useEffect(() => {
     if (typeof Peer === "undefined") {
@@ -2855,6 +2943,50 @@ function RemotePlayerApp({ code, team }) {
             <Wifi size={40} color="#4CA98D" />
             <p className="font-ui" style={{ color: "#F5EFE0", marginTop: 14, fontSize: 16, fontWeight: 700 }}>Conectado como {myName}</p>
             <p className="font-ui" style={{ color: "#8FA0B8", marginTop: 8, fontSize: 13.5 }}>Esperando que empiece el duelo…</p>
+
+            <div style={{ marginTop: 26 }}>
+              {teamPhoto ? (
+                <img
+                  src={teamPhoto}
+                  alt="Foto del equipo"
+                  style={{ width: 140, height: 140, borderRadius: "50%", objectFit: "cover", border: "3px solid #4CA98D", boxShadow: "0 0 0 3px #16233D" }}
+                />
+              ) : (
+                <div style={{
+                  width: 140, height: 140, borderRadius: "50%", margin: "0 auto",
+                  background: "rgba(255,255,255,0.04)", border: "2px dashed #3A5578",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <Camera size={34} color="#8FA0B8" />
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="user"
+                onChange={handlePhotoFile}
+                style={{ display: "none" }}
+              />
+              <button
+                type="button"
+                className="font-ui"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={photoStatus === "processing"}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, margin: "16px auto 0", padding: "10px 18px", borderRadius: 10,
+                  background: "rgba(184,137,43,0.14)", border: "1.5px solid #B8892B", color: "#D9A93B",
+                  fontSize: 14, fontWeight: 700, cursor: photoStatus === "processing" ? "wait" : "pointer",
+                }}
+              >
+                <Camera size={16} />
+                {photoStatus === "processing" ? "Procesando…" : teamPhoto ? "Tomar otra foto" : "Tomar foto del equipo"}
+              </button>
+              {photoStatus === "sent" && (
+                <p className="font-ui fade-in" style={{ color: "#4CA98D", fontSize: 12, marginTop: 8 }}>✔ Foto enviada a la pantalla principal</p>
+              )}
+            </div>
           </>
         )}
 
