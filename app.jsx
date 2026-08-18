@@ -2142,108 +2142,111 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
   }, [qIndex, narrationEnabled]);
 
   return (
-    <div style={styles.container} className="fade-in">
-      {/* Marcador */}
-      <div style={styles.scoreBar}>
-        <ScorePill name={teamName(1)} icon={teamIcon(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" connected={remoteMode === "host" ? remoteStatus[1] === "connected" : null} />
-        <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(10px, 2.6vw, 12.5px)", flex: "0 1 auto", minWidth: 0, padding: "6px 4px 0" }}>
-          <div className="font-display" style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "clamp(17px, 6vw, 26px)" }}>{book?.name}</div>
-          <div style={{ marginTop: 2 }}>Pregunta {qIndex + 1} de {total}</div>
+    <>
+      <div style={styles.container} className="fade-in">
+        {/* Marcador */}
+        <div style={styles.scoreBar}>
+          <ScorePill name={teamName(1)} icon={teamIcon(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" connected={remoteMode === "host" ? remoteStatus[1] === "connected" : null} />
+          <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(10px, 2.6vw, 12.5px)", flex: "0 1 auto", minWidth: 0, padding: "6px 4px 0" }}>
+            <div className="font-display" style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "clamp(17px, 6vw, 26px)" }}>{book?.name}</div>
+            <div style={{ marginTop: 2 }}>Pregunta {qIndex + 1} de {total}</div>
+          </div>
+          <ScorePill name={teamName(2)} icon={teamIcon(2)} color={teamColor(2)} score={scores[2]} active={turn === 2} align="right" connected={remoteMode === "host" ? remoteStatus[2] === "connected" : null} />
         </div>
-        <ScorePill name={teamName(2)} icon={teamIcon(2)} color={teamColor(2)} score={scores[2]} active={turn === 2} align="right" connected={remoteMode === "host" ? remoteStatus[2] === "connected" : null} />
+
+        {/* Barra de progreso */}
+        <div style={styles.progressTrack}>
+          <div style={{ ...styles.progressFill, width: `${((qIndex) / total) * 100}%` }} />
+        </div>
       </div>
 
-      {/* Barra de progreso */}
-      <div style={styles.progressTrack}>
-        <div style={{ ...styles.progressFill, width: `${((qIndex) / total) * 100}%` }} />
-      </div>
-
-      {/* Pregunta en grande — pensada para proyectarse en pantalla grande */}
-      <div key={"bigq" + qIndex} className="fade-in" style={{ textAlign: "center", margin: "22px 0 6px", padding: "0 clamp(4px, 2vw, 16px)" }}>
+      {/* Pregunta en grande — usa todo el ancho de la pantalla, pensada para proyector */}
+      <div key={"bigq" + qIndex} className="fade-in" style={{ width: "100%", maxWidth: "min(96vw, 1400px)", margin: "22px auto 6px", textAlign: "center", padding: "0 clamp(12px, 4vw, 40px)" }}>
         {(currentQ.chapter || currentQ.verse) && (
-          <div className="font-ui" style={{ fontSize: "clamp(12px, 2.6vw, 15px)", color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 8 }}>
+          <div className="font-ui" style={{ fontSize: "clamp(12px, 2.6vw, 16px)", color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 10 }}>
             {book?.name} {currentQ.chapter}{currentQ.chapter && currentQ.verse ? ":" : ""}{currentQ.verse}
           </div>
         )}
-        <p className="font-display" style={{ fontSize: "clamp(24px, 5.2vw, 42px)", color: "#F5EFE0", lineHeight: 1.3, fontWeight: 700, margin: 0 }}>
+        <p className="font-display" style={{ fontSize: "clamp(24px, 4.6vw, 48px)", color: "#F5EFE0", lineHeight: 1.3, fontWeight: 700, margin: 0, whiteSpace: "normal" }}>
           {currentQ.q}
         </p>
       </div>
 
-      {/* Turno + temporizador */}
-      <div key={qIndex} className="fade-in" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, margin: "10px 0 16px", textAlign: "center" }}>
-        <div className="font-ui" style={{ fontSize: 16, color: "#F5EFE0" }}>
-          Turno de <span style={{ color: activeColor, fontWeight: 700 }}>{teamName(turn)}</span>
-        </div>
-        <TimerRing secondsLeft={timeLeft} totalSeconds={timerSeconds} size={116} />
-      </div>
-
-      {/* Tarjeta de opciones */}
-      <div key={"q" + qIndex} className="fade-in" style={{ ...styles.questionCard, borderColor: activeColor }}>
-        {timedOut && (
-          <div className="font-ui" style={{ marginBottom: 10, color: "#C0405A", fontSize: 13.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            ⏱ Tiempo agotado — sin punto para {teamName(turn)}
+      <div style={styles.container} className="fade-in">
+        {/* Turno + temporizador */}
+        <div key={qIndex} className="fade-in" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, margin: "10px 0 16px", textAlign: "center" }}>
+          <div className="font-ui" style={{ fontSize: 16, color: "#F5EFE0" }}>
+            Turno de <span style={{ color: activeColor, fontWeight: 700 }}>{teamName(turn)}</span>
           </div>
-        )}
+          <TimerRing secondsLeft={timeLeft} totalSeconds={timerSeconds} size={116} />
+        </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 22 }}>
-          {currentQ.options.map((opt, idx) => {
-            const isCorrect = idx === currentQ.correct;
-            const isSelected = idx === selected;
-            let bg = "#1F3454";
-            let border = "#3A5578";
-            if (showFeedback) {
-              if (isCorrect) { bg = "#1F6F5C"; border = "#1F6F5C"; }
-              else if (isSelected) { bg = "#8B2E3F"; border = "#8B2E3F"; }
-              else { bg = "#1A2C48"; border = "#2A3E5C"; }
-            }
-            return (
-              <button
-                key={idx}
-                className="opt-btn font-body"
-                disabled={showFeedback}
-                onClick={() => onAnswer(idx)}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "14px 18px", borderRadius: 10, background: bg, border: `1.5px solid ${border}`,
-                  color: "#F5EFE0", fontSize: 17, textAlign: "left", cursor: showFeedback ? "default" : "pointer",
-                }}
-              >
-                <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  <span
-                    className="font-display"
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      width: 30, height: 30, borderRadius: 7, flex: "0 0 auto",
-                      background: "rgba(184,137,43,0.18)", border: "1.5px solid #B8892B",
-                      color: "#D4AF5A", fontSize: 15, fontWeight: 700,
-                    }}
-                  >
-                    {LETTERS[idx]}
+        {/* Tarjeta de opciones */}
+        <div key={"q" + qIndex} className="fade-in" style={{ ...styles.questionCard, borderColor: activeColor }}>
+          {timedOut && (
+            <div className="font-ui" style={{ marginBottom: 10, color: "#C0405A", fontSize: 13.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              ⏱ Tiempo agotado — sin punto para {teamName(turn)}
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 22 }}>
+            {currentQ.options.map((opt, idx) => {
+              const isCorrect = idx === currentQ.correct;
+              const isSelected = idx === selected;
+              let bg = "#1F3454";
+              let border = "#3A5578";
+              if (showFeedback) {
+                if (isCorrect) { bg = "#1F6F5C"; border = "#1F6F5C"; }
+                else if (isSelected) { bg = "#8B2E3F"; border = "#8B2E3F"; }
+                else { bg = "#1A2C48"; border = "#2A3E5C"; }
+              }
+              return (
+                <button
+                  key={idx}
+                  className="opt-btn font-body"
+                  disabled={showFeedback}
+                  onClick={() => onAnswer(idx)}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "14px 18px", borderRadius: 10, background: bg, border: `1.5px solid ${border}`,
+                    color: "#F5EFE0", fontSize: 17, textAlign: "left", cursor: showFeedback ? "default" : "pointer",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <span
+                      className="font-display"
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        width: 30, height: 30, borderRadius: 7, flex: "0 0 auto",
+                        background: "rgba(184,137,43,0.18)", border: "1.5px solid #B8892B",
+                        color: "#D4AF5A", fontSize: 15, fontWeight: 700,
+                      }}
+                    >
+                      {LETTERS[idx]}
+                    </span>
+                    <span>{opt}</span>
                   </span>
-                  <span>{opt}</span>
-                </span>
-                {showFeedback && isCorrect && <Check size={20} color="#F5EFE0" />}
-                {showFeedback && isSelected && !isCorrect && <X size={20} color="#F5EFE0" />}
-              </button>
-            );
-          })}
-        </div>
+                  {showFeedback && isCorrect && <Check size={20} color="#F5EFE0" />}
+                  {showFeedback && isSelected && !isCorrect && <X size={20} color="#F5EFE0" />}
+                </button>
+              );
+            })}
+          </div>
 
-        {showFeedback && (
-          <div className="font-display fade-in" style={{ marginTop: 20, textAlign: "center", color: selected === currentQ.correct ? "#63C7A7" : "#F08A9D", fontSize: 22, letterSpacing: "0.1em" }}>
-            {selected === currentQ.correct ? "Correcto" : "Incorrecto"}
-          </div>
-        )}
-        {showFeedback && (
-          <div style={{ marginTop: 22, textAlign: "center" }} className="fade-in">
-            <button className="font-ui" style={styles.primaryBtn} onClick={onNext}>
-              {qIndex + 1 < total ? "Siguiente pregunta" : "Ver resultados"}
-              <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
-            </button>
-          </div>
-        )}
-      </div>
+          {showFeedback && (
+            <div className="font-display fade-in" style={{ marginTop: 20, textAlign: "center", color: selected === currentQ.correct ? "#63C7A7" : "#F08A9D", fontSize: 22, letterSpacing: "0.1em" }}>
+              {selected === currentQ.correct ? "Correcto" : "Incorrecto"}
+            </div>
+          )}
+          {showFeedback && (
+            <div style={{ marginTop: 22, textAlign: "center" }} className="fade-in">
+              <button className="font-ui" style={styles.primaryBtn} onClick={onNext}>
+                {qIndex + 1 < total ? "Siguiente pregunta" : "Ver resultados"}
+                <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
+              </button>
+            </div>
+          )}
+        </div>
 
       {/* Mensaje emergente con el texto del versículo */}
       {verseVisible && currentQ.verseText && (
@@ -2262,7 +2265,8 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
           </div>
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
