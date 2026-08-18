@@ -2194,8 +2194,10 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
           </div>
           <TimerRing secondsLeft={timeLeft} totalSeconds={timerSeconds} size={116} />
         </div>
+      </div>
 
-        {/* Tarjeta de opciones */}
+      {/* Opciones de respuesta — ancho amplio y letra grande, pensadas para proyector */}
+      <div style={{ width: "100%", maxWidth: "min(96vw, 1100px)", margin: "0 auto" }} className="fade-in">
         <div key={"q" + qIndex} className="fade-in" style={{ ...styles.questionCard, borderColor: activeColor }}>
           {timedOut && (
             <div className="font-ui" style={{ marginBottom: 10, color: "#C0405A", fontSize: 13.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -2203,7 +2205,7 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
             </div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 22 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 22 }}>
             {currentQ.options.map((opt, idx) => {
               const isCorrect = idx === currentQ.correct;
               const isSelected = idx === selected;
@@ -2222,26 +2224,26 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
                   onClick={() => onAnswer(idx)}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "14px 18px", borderRadius: 10, background: bg, border: `1.5px solid ${border}`,
-                    color: "#F5EFE0", fontSize: 17, textAlign: "left", cursor: showFeedback ? "default" : "pointer",
+                    padding: "clamp(16px, 2.6vw, 26px) clamp(18px, 3vw, 30px)", borderRadius: 14, background: bg, border: `2px solid ${border}`,
+                    color: "#F5EFE0", fontSize: "clamp(19px, 3vw, 32px)", textAlign: "left", cursor: showFeedback ? "default" : "pointer",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: "clamp(14px, 2vw, 22px)" }}>
                     <span
                       className="font-display"
                       style={{
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        width: 30, height: 30, borderRadius: 7, flex: "0 0 auto",
+                        width: "clamp(38px, 5vw, 56px)", height: "clamp(38px, 5vw, 56px)", borderRadius: 10, flex: "0 0 auto",
                         background: "rgba(184,137,43,0.18)", border: "1.5px solid #B8892B",
-                        color: "#D4AF5A", fontSize: 15, fontWeight: 700,
+                        color: "#D4AF5A", fontSize: "clamp(17px, 2.2vw, 25px)", fontWeight: 700,
                       }}
                     >
                       {LETTERS[idx]}
                     </span>
                     <span>{opt}</span>
                   </span>
-                  {showFeedback && isCorrect && <Check size={20} color="#F5EFE0" />}
-                  {showFeedback && isSelected && !isCorrect && <X size={20} color="#F5EFE0" />}
+                  {showFeedback && isCorrect && <Check size={28} color="#F5EFE0" />}
+                  {showFeedback && isSelected && !isCorrect && <X size={28} color="#F5EFE0" />}
                 </button>
               );
             })}
@@ -2261,7 +2263,9 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
             </div>
           )}
         </div>
+      </div>
 
+      <div style={styles.container} className="fade-in">
       {/* Mensaje emergente con el texto del versículo */}
       {verseVisible && currentQ.verseText && (
         <>
