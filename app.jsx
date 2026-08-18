@@ -1503,7 +1503,7 @@ function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books,
 function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onReorderQuestions, saveError, loaded, onBack }) {
   const [selectedBookId, setSelectedBookId] = useState(library[0]?.id);
   const [qText, setQText] = useState("");
-  const [opts, setOpts] = useState(["", "", ""]);
+  const [opts, setOpts] = useState(["", "", "", ""]);
   const [correct, setCorrect] = useState(0);
   const [chapter, setChapter] = useState("");
   const [verse, setVerse] = useState("");
@@ -1568,18 +1568,9 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
     setOpts((prev) => prev.map((o, idx) => (idx === i ? val : o)));
   }
 
-  function addFourthOption() {
-    setOpts((prev) => (prev.length >= 4 ? prev : [...prev, ""]));
-  }
-
-  function removeFourthOption() {
-    setOpts((prev) => (prev.length > 3 ? prev.slice(0, 3) : prev));
-    setCorrect((prev) => (prev === 3 ? 0 : prev));
-  }
-
   function resetForm() {
     setQText("");
-    setOpts(["", "", ""]);
+    setOpts(["", "", "", ""]);
     setCorrect(0);
     setChapter("");
     setVerse("");
@@ -1796,33 +1787,9 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
                 value={o}
                 onChange={(e) => updateOpt(i, e.target.value)}
               />
-              {i === 3 && (
-                <button
-                  type="button"
-                  className="font-ui"
-                  onClick={removeFourthOption}
-                  aria-label="Quitar opción D"
-                  style={{ flex: "0 0 auto", background: "none", border: "none", color: "#8FA0B8", cursor: "pointer", padding: 4 }}
-                >
-                  <X size={16} />
-                </button>
-              )}
             </div>
           ))}
         </div>
-        {opts.length < 4 && (
-          <button
-            type="button"
-            className="font-ui"
-            onClick={addFourthOption}
-            style={{
-              display: "flex", alignItems: "center", gap: 6, marginTop: 10, padding: "6px 12px", borderRadius: 7, cursor: "pointer",
-              background: "rgba(184,137,43,0.1)", border: "1.5px dashed #B8892B", color: "#D9A93B", fontSize: 12.5, fontWeight: 700,
-            }}
-          >
-            + Agregar opción D
-          </button>
-        )}
         <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 8 }}>
           Toca la letra de la opción correcta.
         </div>
