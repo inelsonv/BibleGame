@@ -2142,7 +2142,7 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
   }, [qIndex, narrationEnabled]);
 
   return (
-    <>
+    <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}>
       <div style={styles.container} className="fade-in">
         {/* Marcador */}
         <div style={styles.scoreBar}>
@@ -2266,7 +2266,7 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
         </>
       )}
       </div>
-    </>
+    </div>
   );
 }
 
