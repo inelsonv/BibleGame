@@ -860,20 +860,22 @@ function App() {
         input[type="range"].gold-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #B8892B; border: 2px solid #F5EFE0; cursor: pointer; }
       `}</style>
 
-      <button
-        type="button"
-        onClick={toggleFullscreen}
-        aria-label={isFullscreen ? "Salir de pantalla completa" : "Ver en pantalla completa"}
-        title={isFullscreen ? "Salir de pantalla completa" : "Ver en pantalla completa"}
-        style={{
-          position: "fixed", top: "clamp(10px, 3vw, 16px)", right: "clamp(10px, 3vw, 16px)", zIndex: 60,
-          width: 42, height: 42, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
-          background: "rgba(15,26,46,0.8)", border: "1.5px solid #3A5578", color: "#D9A93B",
-          cursor: "pointer", backdropFilter: "blur(4px)",
-        }}
-      >
-        {isFullscreen ? <Minimize size={19} /> : <Maximize size={19} />}
-      </button>
+      {!isFullscreen && (
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          aria-label="Ver en pantalla completa"
+          title="Ver en pantalla completa"
+          style={{
+            position: "fixed", top: "clamp(10px, 3vw, 16px)", right: "clamp(10px, 3vw, 16px)", zIndex: 60,
+            width: 42, height: 42, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(15,26,46,0.8)", border: "1.5px solid #3A5578", color: "#D9A93B",
+            cursor: "pointer", backdropFilter: "blur(4px)",
+          }}
+        >
+          <Maximize size={19} />
+        </button>
+      )}
 
       {screen === "setup" && (
         <SetupScreen
