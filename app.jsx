@@ -33,6 +33,34 @@ const Minimize = (p) => <Icon {...p}><path d="M8 3v5H3" /><path d="M16 3v5h5" />
 const Smartphone = (p) => <Icon {...p}><rect x="6" y="2" width="12" height="20" rx="2" /><path d="M11 18h2" /></Icon>;
 const Copy = (p) => <Icon {...p}><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></Icon>;
 const Wifi = (p) => <Icon {...p}><path d="M5 13a10 10 0 0 1 14 0" /><path d="M8.5 16.5a5 5 0 0 1 7 0" /><path d="M2 9a15 15 0 0 1 20 0" /><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none" /></Icon>;
+const Share2 = (p) => <Icon {...p}><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="M8.6 13.5l6.8 3.9" /><path d="M15.4 6.6L8.6 10.5" /></Icon>;
+const Download = (p) => <Icon {...p}><path d="M12 3v12" /><path d="M7 10l5 5 5-5" /><path d="M5 21h14" /></Icon>;
+// Íconos de marca (usan sus colores propios en vez de currentColor, por eso no reusan <Icon>)
+const InstagramIcon = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <defs>
+      <linearGradient id="igGrad" x1="0" y1="24" x2="24" y2="0">
+        <stop offset="0%" stopColor="#FED576" /><stop offset="26%" stopColor="#F47133" />
+        <stop offset="61%" stopColor="#BC3081" /><stop offset="100%" stopColor="#4C63D2" />
+      </linearGradient>
+    </defs>
+    <rect x="2.5" y="2.5" width="19" height="19" rx="6" fill="url(#igGrad)" />
+    <circle cx="12" cy="12" r="4.6" fill="none" stroke="#fff" strokeWidth="1.8" />
+    <circle cx="17.3" cy="6.7" r="1.15" fill="#fff" />
+  </svg>
+);
+const FacebookIcon = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <rect x="2.5" y="2.5" width="19" height="19" rx="6" fill="#1877F2" />
+    <path d="M14.5 8.5h1.9V5.7h-2.1c-2.1 0-3.4 1.3-3.4 3.5v1.6H8.7v2.8h2.2v6.7h2.9v-6.7h2.1l.4-2.8h-2.5V9.6c0-.7.3-1.1 1.2-1.1z" fill="#fff" />
+  </svg>
+);
+const TikTokIcon = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <rect x="2.5" y="2.5" width="19" height="19" rx="6" fill="#111" />
+    <path d="M15.8 6.2c.4 1.4 1.4 2.4 2.9 2.6v2.1c-1 .1-2-.2-2.9-.8v4.6c0 2.4-2 4.3-4.4 4.3s-4.4-1.9-4.4-4.3 2-4.3 4.4-4.3c.2 0 .5 0 .7.1v2.2a2.2 2.2 0 1 0 1.6 2.1V4.6h2.1v1.6z" fill="#fff" />
+  </svg>
+);
 
 /* ---------------------------------------------------------
    DATOS: banco de preguntas por libro bíblico
@@ -2390,6 +2418,181 @@ function TrophyBadge({ winnerName, winnerColor, bookName }) {
   );
 }
 
+function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName }) {
+  const canvasRef = useRef(null);
+  const [blob, setBlob] = useState(null);
+  const [imageUrl, setImageUrl] = useState(null);
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    function drawWrapped(ctx, text, x, y, maxWidth, lineHeight) {
+      const words = text.split(" ");
+      let line = "";
+      const lines = [];
+      for (const word of words) {
+        const test = line ? line + " " + word : word;
+        if (ctx.measureText(test).width > maxWidth && line) { lines.push(line); line = word; }
+        else line = test;
+      }
+      if (line) lines.push(line);
+      const startY = y - ((lines.length - 1) * lineHeight) / 2;
+      lines.forEach((l, i) => ctx.fillText(l, x, startY + i * lineHeight));
+    }
+    async function draw() {
+      try { await document.fonts?.ready; } catch { /* fuentes no disponibles: se usa la tipografía por defecto */ }
+      const canvas = canvasRef.current;
+      if (!canvas || cancelled) return;
+      const W = 1080, H = 1350;
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext("2d");
+
+      const bg = ctx.createRadialGradient(W / 2, 0, 100, W / 2, H, 1500);
+      bg.addColorStop(0, "#1F3454"); bg.addColorStop(0.55, "#16233D"); bg.addColorStop(1, "#0A101C");
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = "rgba(184,137,43,0.55)"; ctx.lineWidth = 6;
+      ctx.strokeRect(28, 28, W - 56, H - 56);
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#B8892B";
+      ctx.font = "700 32px Inter, sans-serif";
+      ctx.fillText("DEBATE BÍBLICO", W / 2, 130);
+      ctx.fillStyle = "#8FA0B8";
+      ctx.font = "500 30px Inter, sans-serif";
+      ctx.fillText(bookName || "", W / 2, 178);
+
+      ctx.font = "700 60px Cinzel, serif";
+      if (winner === "empate") {
+        ctx.fillStyle = "#F5EFE0";
+        ctx.fillText("¡EMPATE!", W / 2, 320);
+      } else {
+        ctx.fillStyle = teamColor(winner);
+        drawWrapped(ctx, `${teamName(winner).toUpperCase()} GANA`, W / 2, 320, W - 160, 66);
+      }
+
+      const teamY = 560, gap = 340;
+      [1, 2].forEach((t, i) => {
+        const x = W / 2 + (i === 0 ? -gap / 2 : gap / 2);
+        ctx.beginPath(); ctx.arc(x, teamY, 130, 0, Math.PI * 2);
+        ctx.fillStyle = teamColor(t); ctx.fill();
+        ctx.font = "700 92px Cinzel, serif"; ctx.fillStyle = "#F5EFE0";
+        ctx.fillText(String(scores[t]), x, teamY + 32);
+        ctx.font = "700 36px Inter, sans-serif"; ctx.fillStyle = "#F5EFE0";
+        drawWrapped(ctx, teamName(t), x, teamY + 210, 300, 42);
+      });
+
+      ctx.font = "500 28px Inter, sans-serif"; ctx.fillStyle = "#8FA0B8";
+      ctx.fillText(`${total} preguntas respondidas`, W / 2, 900);
+      ctx.font = "600 26px Inter, sans-serif"; ctx.fillStyle = "#D9A93B";
+      ctx.fillText("⚔ Debate Bíblico", W / 2, H - 60);
+
+      canvas.toBlob((b) => {
+        if (cancelled || !b) return;
+        setBlob(b);
+        setImageUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(b); });
+      }, "image/png");
+    }
+    draw();
+    return () => { cancelled = true; };
+  }, [winner, scores, total, bookName]);
+
+  function downloadImage() {
+    if (!imageUrl) return;
+    const a = document.createElement("a");
+    a.href = imageUrl;
+    a.download = "resultado-debate-biblico.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  const shareText = winner === "empate"
+    ? `¡Empate en nuestro Debate Bíblico sobre ${bookName}! 🏆`
+    : `¡${teamName(winner)} ganó el Debate Bíblico sobre ${bookName}! 🏆`;
+
+  async function shareNative() {
+    if (!blob) return;
+    const file = new File([blob], "resultado-debate-biblico.png", { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "Debate Bíblico", text: shareText });
+        return;
+      } catch { /* el usuario canceló el cuadro de compartir, o no se pudo: se ofrece la descarga */ }
+    }
+    downloadImage();
+    setToast("Imagen descargada. Ábrela en la app para compartirla.");
+    setTimeout(() => setToast(""), 3500);
+  }
+
+  function shareFacebook() {
+    const url = "https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(window.location.href) + "&quote=" + encodeURIComponent(shareText);
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function shareAppOnly(label) {
+    // Instagram y TikTok no ofrecen un enlace web para prellenar una imagen:
+    // se descarga la imagen y se guía al usuario a compartirla desde la app.
+    downloadImage();
+    setToast(`Imagen descargada. Ábrela en ${label} para compartirla en tu historia o publicación.`);
+    setTimeout(() => setToast(""), 4000);
+  }
+
+  return (
+    <div style={{ ...styles.card, maxWidth: 420, margin: "28px auto 0" }}>
+      <canvas ref={canvasRef} style={{ display: "none" }} aria-hidden="true" />
+      <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 14 }}>
+        <Share2 size={16} /> Comparte el resultado
+      </div>
+
+      {imageUrl && (
+        <img src={imageUrl} alt="Imagen del resultado del duelo" style={{ width: "100%", borderRadius: 10, marginBottom: 14, border: "1.5px solid #3A5578" }} />
+      )}
+
+      <button
+        type="button" className="font-ui"
+        onClick={shareNative}
+        disabled={!blob}
+        style={{ ...styles.primaryBtn, width: "100%", opacity: blob ? 1 : 0.5, cursor: blob ? "pointer" : "wait", marginBottom: 10 }}
+      >
+        <Share2 size={16} style={{ marginRight: 8, verticalAlign: "-3px" }} />
+        Compartir resultado
+      </button>
+
+      <div style={{ display: "flex", gap: 10, justifyContent: "center", marginBottom: 10 }}>
+        <button type="button" onClick={() => shareAppOnly("Instagram")} aria-label="Compartir en Instagram" title="Compartir en Instagram"
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+          <InstagramIcon size={40} />
+        </button>
+        <button type="button" onClick={shareFacebook} aria-label="Compartir en Facebook" title="Compartir en Facebook"
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+          <FacebookIcon size={40} />
+        </button>
+        <button type="button" onClick={() => shareAppOnly("TikTok")} aria-label="Compartir en TikTok" title="Compartir en TikTok"
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+          <TikTokIcon size={40} />
+        </button>
+      </div>
+
+      <button
+        type="button" className="font-ui"
+        onClick={downloadImage}
+        disabled={!imageUrl}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          padding: "9px 12px", borderRadius: 8, cursor: imageUrl ? "pointer" : "wait",
+          background: "rgba(255,255,255,0.04)", border: "1.5px solid #3A5578", color: "#B8A98A", fontSize: 12.5, fontWeight: 700,
+        }}
+      >
+        <Download size={14} /> Descargar imagen
+      </button>
+
+      {toast && (
+        <div className="font-ui fade-in" style={{ marginTop: 10, fontSize: 11.5, color: "#8FA0B8", textAlign: "center" }}>{toast}</div>
+      )}
+    </div>
+  );
+}
+
 function ResultsScreen({ winner, teamName, teamColor, scores, total, book, onRematch, onNewTeams }) {
   const answeredCount = (team) => (team === 1 ? Math.ceil(total / 2) : Math.floor(total / 2));
   const incorrectCount = (team) => Math.max(0, answeredCount(team) - scores[team]);
@@ -2414,6 +2617,8 @@ function ResultsScreen({ winner, teamName, teamColor, scores, total, book, onRem
         <AnswerStatsCard name={teamName(1)} color={teamColor(1)} score={scores[1]} total={total} correct={scores[1]} incorrect={incorrectCount(1)} />
         <AnswerStatsCard name={teamName(2)} color={teamColor(2)} score={scores[2]} total={total} correct={scores[2]} incorrect={incorrectCount(2)} />
       </div>
+
+      <ShareResultCard winner={winner} teamName={teamName} teamColor={teamColor} scores={scores} total={total} bookName={book?.name} />
 
       <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 32, flexWrap: "wrap" }}>
         <button className="font-ui" style={styles.primaryBtn} onClick={onRematch}>
