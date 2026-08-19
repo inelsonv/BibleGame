@@ -186,7 +186,30 @@ const BIBLE_BOOKS = [
 
 const LETTERS = ["A", "B", "C", "D"];
 const CUSTOM_BOOK_ID = "personalizado";
-const LIBRARY_STORAGE_KEY = "duelo-biblico:biblioteca";
+const LIBRARY_STORAGE_KEY = "duelo-biblico:biblioteca"; // clave de respaldo local (solo si Firebase no está disponible)
+
+// ---- Firebase: banco de preguntas compartido entre todos los dispositivos ----
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBej5YWGnP_z7zOQ-R4LLxC3Eenv2R-CRQ",
+  authDomain: "biblegame-229e6.firebaseapp.com",
+  projectId: "biblegame-229e6",
+  storageBucket: "biblegame-229e6.firebasestorage.app",
+  messagingSenderId: "735706165506",
+  appId: "1:735706165506:web:96dabcce7e8d7dba73d21b",
+};
+const FIRESTORE_COLLECTION = "biblegame";
+const FIRESTORE_DOC = "library";
+
+let firestoreDb = null;
+try {
+  if (typeof firebase !== "undefined") {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    firestoreDb = firebase.firestore();
+  }
+} catch (e) {
+  // Firebase no se pudo inicializar (bloqueado, sin internet, etc.): se usará localStorage como respaldo
+  firestoreDb = null;
+}
 
 // Abreviaturas usadas por la fuente de texto bíblico (Reina-Valera, dominio
 // público), en el MISMO orden canónico que BIBLE_BOOKS, para poder mapear
@@ -638,24 +661,56 @@ function App() {
 
   useEffect(() => () => stopHosting(), []); // limpiar la conexión al desmontar la app
 
-  // Cargar la biblioteca guardada (preguntas base + propias, con cualquier edición previa).
-  // Se usa localStorage del navegador: funciona en la web y también dentro de una futura app nativa.
+  // Cargar y mantener sincronizada la biblioteca COMPARTIDA entre todos los
+  // dispositivos, usando Firebase Firestore en tiempo real. Si Firebase no
+  // está disponible (sin internet, bloqueado, etc.), se usa localStorage
+  // como respaldo local (solo en ese navegador).
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LIBRARY_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) setLibrary(normalizeLibrary(parsed));
+    function loadFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(LIBRARY_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) setLibrary(normalizeLibrary(parsed));
+        }
+      } catch (e) {
+        // primera vez que se abre la app, o el navegador bloquea el almacenamiento: se usa la biblioteca base
+      } finally {
+        setLibraryLoaded(true);
       }
-    } catch (e) {
-      // primera vez que se abre la app, o el navegador bloquea el almacenamiento: se usa la biblioteca base
-    } finally {
-      setLibraryLoaded(true);
     }
+
+    if (firestoreDb) {
+      const docRef = firestoreDb.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC);
+      const unsubscribe = docRef.onSnapshot(
+        (snap) => {
+          const data = snap.data();
+          if (snap.exists && Array.isArray(data?.books) && data.books.length > 0) {
+            setLibrary(normalizeLibrary(data.books));
+          } else {
+            // Primera vez que se usa la base de datos: se siembra con la biblioteca base
+            const seeded = seedLibrary();
+            docRef.set({ books: seeded, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+            setLibrary(seeded);
+          }
+          setLibraryLoaded(true);
+        },
+        () => loadFromLocalStorage() // error de conexión/permisos: se cae al respaldo local
+      );
+      return unsubscribe;
+    }
+    loadFromLocalStorage();
   }, []);
 
   function persistLibrary(next) {
     setLibrary(next);
+    if (firestoreDb) {
+      firestoreDb.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC)
+        .set({ books: next, updatedAt: firebase.firestore.FieldValue.serverTimestamp() })
+        .then(() => setLibrarySaveError(false))
+        .catch(() => setLibrarySaveError(true));
+      return;
+    }
     try {
       localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(next));
       setLibrarySaveError(false);
@@ -1653,6 +1708,16 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
         <p className="font-body" style={styles.subtitle}>
           Agrega preguntas nuevas a cualquier libro, o edita y borra las que ya existen. Todo se guarda automáticamente.
         </p>
+        <div className="font-ui" style={{
+          display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, padding: "4px 12px", borderRadius: 20,
+          fontSize: 11.5, fontWeight: 700,
+          background: firestoreDb ? "rgba(76,169,141,0.14)" : "rgba(184,137,43,0.14)",
+          border: `1.5px solid ${firestoreDb ? "#4CA98D" : "#B8892B"}`,
+          color: firestoreDb ? "#4CA98D" : "#D9A93B",
+        }}>
+          <Wifi size={12} />
+          {firestoreDb ? "Sincronizado — visible en todos los dispositivos" : "Solo en este navegador (Firebase no disponible)"}
+        </div>
       </header>
 
       {/* Selector de libro */}
