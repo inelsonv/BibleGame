@@ -3033,7 +3033,7 @@ function RemotePlayerApp({ code, team }) {
   // de "ya respondí" de este celular).
   const currentKey = isQuestion ? (isBothMode ? `both-${gameState.qIndex}` : `${gameState.qIndex}-${gameState.turn}`) : null;
   const hasAnswered = isQuestion && answeredForKey === currentKey;
-  const myAnswerIndex = isBothMode ? gameState.bothAnswers?.[team] ?? null : gameState.selected;
+  const myAnswerIndex = isBothMode ? gameState?.bothAnswers?.[team] ?? null : gameState?.selected ?? null;
 
   // Reproduce el sonido de correcto/incorrecto una sola vez cuando llega la
   // retroalimentación de esta pregunta (evita repetirlo si el mensaje se reenvía).
