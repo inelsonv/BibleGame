@@ -553,6 +553,8 @@ function App() {
   }
   const [orderBasis, setOrderBasis] = useState("sequence"); // "sequence" | "difficulty"
   const [questionOrder, setQuestionOrder] = useState("random"); // "random" | "numeric" | "alternating"
+  const [answerMode, setAnswerMode] = useState("turns"); // "turns" | "both"
+  const [bothAnswers, setBothAnswers] = useState({ 1: null, 2: null });
   const [feedbackDisplaySeconds, setFeedbackDisplaySeconds] = useState(3);
   const [verseDisplaySeconds, setVerseDisplaySeconds] = useState(5);
   const [bookId, setBookId] = useState(null);
@@ -788,6 +790,7 @@ function App() {
     setTurn(1);
     setScores({ 1: 0, 2: 0 });
     setSelected(null);
+    setBothAnswers({ 1: null, 2: null });
     setShowFeedback(false);
     setScreen("game");
   }
@@ -803,11 +806,13 @@ function App() {
       qIndex, total: questions.length,
       turn, difficulty: currentQ.difficulty, timerSeconds,
       options: currentQ.options,
+      answerMode,
+      bothAnswers,
       showFeedback, selected, correctIndex: showFeedback ? currentQ.correct : null,
       scores, teamNames: { 1: teamName(1), 2: teamName(2) },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remoteMode, screen, qIndex, turn, showFeedback, selected, scores]);
+  }, [remoteMode, screen, qIndex, turn, showFeedback, selected, scores, answerMode, bothAnswers]);
 
   // Avisa a los celulares cuando termina el duelo, con el resultado final.
   useEffect(() => {
@@ -820,8 +825,39 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteMode, screen]);
 
-  function handleAnswer(idx) {
+  // Registra la respuesta de un equipo. Funciona para los dos modos:
+  // - "turns" (por defecto): solo el equipo con el turno puede responder.
+  // - "both": ambos equipos responden la MISMA pregunta y suman puntos por
+  //   separado. En pantalla local, "turn" indica a quién le toca tocar ahora
+  //   (primero un equipo, luego el otro); en modo remoto cada celular puede
+  //   responder de forma independiente, sin esperar turno.
+  function handleAnswerForTeam(team, idx) {
     if (showFeedback) return;
+
+    if (answerMode === "both") {
+      setBothAnswers((prev) => {
+        if (prev[team] !== null) return prev; // este equipo ya respondió esta pregunta
+        const updated = { ...prev, [team]: idx };
+        const bothDone = updated[1] !== null && updated[2] !== null;
+        if (bothDone) {
+          setShowFeedback(true);
+          setScores((s) => {
+            const next = { ...s };
+            if (updated[1] === currentQ.correct) next[1] += 1;
+            if (updated[2] === currentQ.correct) next[2] += 1;
+            return next;
+          });
+          const anyCorrect = updated[1] === currentQ.correct || updated[2] === currentQ.correct;
+          if (anyCorrect) playCorrectSound(); else playIncorrectSound();
+        } else {
+          setTurn(team === 1 ? 2 : 1); // le toca al otro equipo, con temporizador fresco
+        }
+        return updated;
+      });
+      return;
+    }
+
+    if (team !== turn) return;
     setSelected(idx);
     setShowFeedback(true);
     if (idx === currentQ.correct) {
@@ -833,10 +869,9 @@ function App() {
   }
 
   // Mantiene siempre disponible, para los mensajes que lleguen por WebRTC
-  // desde los celulares, una versión actualizada de handleAnswer que valida
-  // que el equipo que responde sea el que tiene el turno.
+  // desde los celulares, una versión actualizada de handleAnswerForTeam.
   remoteHandleAnswerRef.current = (team, idx) => {
-    if (screen === "game" && team === turn && !showFeedback) handleAnswer(idx);
+    if (screen === "game") handleAnswerForTeam(team, idx);
   };
 
   function nextQuestion() {
@@ -844,6 +879,7 @@ function App() {
       setQIndex((i) => i + 1);
       setTurn((t) => (t === 1 ? 2 : 1));
       setSelected(null);
+      setBothAnswers({ 1: null, 2: null });
       setShowFeedback(false);
     } else {
       setScreen("results");
@@ -987,6 +1023,7 @@ function App() {
           difficultyTimers={difficultyTimers} setDifficultyTimer={setDifficultyTimer}
           orderBasis={orderBasis} setOrderBasis={setOrderBasis}
           questionOrder={questionOrder} setQuestionOrder={setQuestionOrder}
+          answerMode={answerMode} setAnswerMode={setAnswerMode}
           feedbackDisplaySeconds={feedbackDisplaySeconds} setFeedbackDisplaySeconds={setFeedbackDisplaySeconds}
           verseDisplaySeconds={verseDisplaySeconds} setVerseDisplaySeconds={setVerseDisplaySeconds}
           backgroundColor={backgroundColor} setBackgroundColor={setBackgroundColor}
@@ -1008,6 +1045,8 @@ function App() {
           scores={scores}
           selected={selected}
           showFeedback={showFeedback}
+          answerMode={answerMode}
+          bothAnswers={bothAnswers}
           difficultyTimers={difficultyTimers}
           feedbackDisplaySeconds={feedbackDisplaySeconds}
           verseDisplaySeconds={verseDisplaySeconds}
@@ -1015,7 +1054,7 @@ function App() {
           remoteMode={remoteMode}
           remoteStatus={remoteStatus}
           teamPhotos={teamPhotos}
-          onAnswer={handleAnswer}
+          onAnswer={(idx) => handleAnswerForTeam(turn, idx)}
           onNext={nextQuestion}
         />
       )}
@@ -1028,6 +1067,7 @@ function App() {
           teamIcon={teamIcon}
           scores={scores}
           total={questions.length}
+          answerMode={answerMode}
           book={book}
           teamPhotos={remoteMode === "host" ? teamPhotos : null}
           onRematch={rematchSameTeams}
@@ -1339,7 +1379,7 @@ function TeamCard({ label, name, setName, color, setColor, icon, setIcon }) {
 /* ---------------------------------------------------------
    PANTALLA: Configuración
 --------------------------------------------------------- */
-function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setOrderBasis, questionOrder, setQuestionOrder, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
+function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setOrderBasis, questionOrder, setQuestionOrder, answerMode, setAnswerMode, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
   return (
     <div style={styles.container} className="fade-in">
       <button
@@ -1442,6 +1482,42 @@ function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setO
               <div style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 2 }}>{m.description}</div>
             </button>
           ))}
+        </div>
+      </div>
+
+      <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
+        <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 14 }}>
+          <Swords size={16} /> Modo de respuesta
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <button
+            type="button" className="font-ui"
+            onClick={() => setAnswerMode("turns")}
+            aria-pressed={answerMode === "turns"}
+            style={{
+              textAlign: "left", padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+              background: answerMode === "turns" ? "rgba(184,137,43,0.16)" : "rgba(255,255,255,0.03)",
+              border: answerMode === "turns" ? "1.5px solid #B8892B" : "1.5px solid #3A5578",
+            }}
+          >
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: answerMode === "turns" ? "#B8892B" : "#F5EFE0" }}>Por turnos (clásico)</div>
+            <div style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 2 }}>Cada pregunta la responde un solo equipo, alternando.</div>
+          </button>
+          <button
+            type="button" className="font-ui"
+            onClick={() => setAnswerMode("both")}
+            aria-pressed={answerMode === "both"}
+            style={{
+              textAlign: "left", padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+              background: answerMode === "both" ? "rgba(184,137,43,0.16)" : "rgba(255,255,255,0.03)",
+              border: answerMode === "both" ? "1.5px solid #B8892B" : "1.5px solid #3A5578",
+            }}
+          >
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: answerMode === "both" ? "#B8892B" : "#F5EFE0" }}>Ambos equipos responden</div>
+            <div style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 2 }}>
+              Las mismas preguntas para los dos equipos: cada uno suma su propio punto si acierta (en pantalla local, primero responde uno y luego el otro; en modo remoto, cada celular responde de forma independiente).
+            </div>
+          </button>
         </div>
       </div>
 
@@ -2159,17 +2235,18 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
 /* ---------------------------------------------------------
    PANTALLA 3: Juego
 --------------------------------------------------------- */
-function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, difficultyTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, remoteMode, remoteStatus, teamPhotos, onAnswer, onNext }) {
+function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, answerMode, bothAnswers, difficultyTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, remoteMode, remoteStatus, teamPhotos, onAnswer, onNext }) {
   const activeColor = teamColor(turn);
   const timerSeconds = difficultyTimers[currentQ?.difficulty] ?? difficultyTimers[1] ?? 20;
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
   const [verseVisible, setVerseVisible] = useState(false);
   const [verseSecondsLeft, setVerseSecondsLeft] = useState(verseDisplaySeconds);
 
-  // Reinicia el reloj cada vez que cambia la pregunta
+  // Reinicia el reloj cada vez que cambia la pregunta, o cuando le toca
+  // responder al segundo equipo en el modo "ambos equipos" (mismo qIndex).
   useEffect(() => {
     setTimeLeft(timerSeconds);
-  }, [qIndex, timerSeconds]);
+  }, [qIndex, turn, timerSeconds]);
 
   // Cuenta regresiva
   useEffect(() => {
@@ -2205,7 +2282,9 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
     return () => clearTimeout(id);
   }, [verseVisible, verseSecondsLeft]);
 
-  const timedOut = showFeedback && selected === -1;
+  const timedOut = answerMode === "both"
+    ? showFeedback && (bothAnswers[1] === -1 || bothAnswers[2] === -1)
+    : showFeedback && selected === -1;
 
   useEffect(() => {
     if (!narrationEnabled || !window.speechSynthesis || !currentQ) return;
@@ -2253,10 +2332,19 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
 
       <div style={styles.container} className="fade-in">
         {/* Turno + temporizador */}
-        <div key={qIndex} className="fade-in" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, margin: "10px 0 16px", textAlign: "center" }}>
+        <div key={qIndex + "-" + turn} className="fade-in" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, margin: "10px 0 16px", textAlign: "center" }}>
           <div className="font-ui" style={{ fontSize: 16, color: "#F5EFE0" }}>
-            Turno de <span style={{ color: activeColor, fontWeight: 700 }}>{teamName(turn)}</span>
+            {answerMode === "both" ? (
+              <>Le toca responder a <span style={{ color: activeColor, fontWeight: 700 }}>{teamName(turn)}</span></>
+            ) : (
+              <>Turno de <span style={{ color: activeColor, fontWeight: 700 }}>{teamName(turn)}</span></>
+            )}
           </div>
+          {answerMode === "both" && !showFeedback && (bothAnswers[1] !== null || bothAnswers[2] !== null) && (
+            <div className="font-ui fade-in" style={{ fontSize: 12.5, color: "#4CA98D", fontWeight: 700 }}>
+              ✔ {teamName(bothAnswers[1] !== null ? 1 : 2)} ya respondió
+            </div>
+          )}
           <TimerRing secondsLeft={timeLeft} totalSeconds={timerSeconds} size={116} />
         </div>
       </div>
@@ -2266,7 +2354,9 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
         <div key={"q" + qIndex} className="fade-in" style={{ ...styles.questionCard, borderColor: activeColor }}>
           {timedOut && (
             <div className="font-ui" style={{ marginBottom: 10, color: "#C0405A", fontSize: 13.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              ⏱ Tiempo agotado — sin punto para {teamName(turn)}
+              {answerMode === "both"
+                ? "⏱ Tiempo agotado para algún equipo — sin punto en ese caso"
+                : `⏱ Tiempo agotado — sin punto para ${teamName(turn)}`}
             </div>
           )}
 
@@ -2274,11 +2364,16 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
             {currentQ.options.map((opt, idx) => {
               const isCorrect = idx === currentQ.correct;
               const isSelected = idx === selected;
+              const pickedByTeams = answerMode === "both" && showFeedback
+                ? [1, 2].filter((t) => bothAnswers[t] === idx)
+                : [];
               let bg = "#1F3454";
               let border = "#3A5578";
               if (showFeedback) {
                 if (isCorrect) { bg = "#1F6F5C"; border = "#1F6F5C"; }
-                else if (isSelected) { bg = "#8B2E3F"; border = "#8B2E3F"; }
+                else if (answerMode === "both") {
+                  if (pickedByTeams.length > 0) { bg = "#1A2C48"; border = teamColor(pickedByTeams[0]); }
+                } else if (isSelected) { bg = "#8B2E3F"; border = "#8B2E3F"; }
                 else { bg = "#1A2C48"; border = "#2A3E5C"; }
               }
               return (
@@ -2307,17 +2402,41 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
                     </span>
                     <span>{opt}</span>
                   </span>
-                  {showFeedback && isCorrect && <Check size={28} color="#F5EFE0" />}
-                  {showFeedback && isSelected && !isCorrect && <X size={28} color="#F5EFE0" />}
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {answerMode === "both" && pickedByTeams.map((t) => (
+                      <span
+                        key={t}
+                        className="font-ui"
+                        style={{
+                          fontSize: 12, fontWeight: 700, padding: "3px 9px", borderRadius: 20, flex: "0 0 auto",
+                          background: teamColor(t), color: "#F5EFE0", whiteSpace: "nowrap",
+                        }}
+                      >
+                        {teamIcon(t).symbol} {teamName(t)}
+                      </span>
+                    ))}
+                    {showFeedback && isCorrect && <Check size={28} color="#F5EFE0" />}
+                    {showFeedback && answerMode !== "both" && isSelected && !isCorrect && <X size={28} color="#F5EFE0" />}
+                  </span>
                 </button>
               );
             })}
           </div>
 
           {showFeedback && (
-            <div className="font-display fade-in" style={{ marginTop: 20, textAlign: "center", color: selected === currentQ.correct ? "#63C7A7" : "#F08A9D", fontSize: 22, letterSpacing: "0.1em" }}>
-              {selected === currentQ.correct ? "Correcto" : "Incorrecto"}
-            </div>
+            answerMode === "both" ? (
+              <div className="font-ui fade-in" style={{ marginTop: 20, display: "flex", justifyContent: "center", gap: 24, flexWrap: "wrap" }}>
+                {[1, 2].map((t) => (
+                  <span key={t} className="font-display" style={{ color: bothAnswers[t] === currentQ.correct ? "#63C7A7" : "#F08A9D", fontSize: 18, fontWeight: 700 }}>
+                    {teamName(t)}: {bothAnswers[t] === currentQ.correct ? "✔ Correcto" : "✘ Incorrecto"}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="font-display fade-in" style={{ marginTop: 20, textAlign: "center", color: selected === currentQ.correct ? "#63C7A7" : "#F08A9D", fontSize: 22, letterSpacing: "0.1em" }}>
+                {selected === currentQ.correct ? "Correcto" : "Incorrecto"}
+              </div>
+            )
           )}
           {showFeedback && (
             <div style={{ marginTop: 22, textAlign: "center" }} className="fade-in">
@@ -2687,8 +2806,8 @@ function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName,
   );
 }
 
-function ResultsScreen({ winner, teamName, teamColor, scores, total, book, teamPhotos, onRematch, onNewTeams }) {
-  const answeredCount = (team) => (team === 1 ? Math.ceil(total / 2) : Math.floor(total / 2));
+function ResultsScreen({ winner, teamName, teamColor, scores, total, answerMode, book, teamPhotos, onRematch, onNewTeams }) {
+  const answeredCount = (team) => (answerMode === "both" ? total : (team === 1 ? Math.ceil(total / 2) : Math.floor(total / 2)));
   const incorrectCount = (team) => Math.max(0, answeredCount(team) - scores[team]);
 
   return (
@@ -2904,9 +3023,17 @@ function RemotePlayerApp({ code, team }) {
   }, [code, team]);
 
   const isQuestion = gameState && gameState.type === "question";
-  const isMyTurn = isQuestion && gameState.turn === team;
-  const currentKey = isQuestion ? `${gameState.qIndex}-${gameState.turn}` : null;
+  const isBothMode = isQuestion && gameState.answerMode === "both";
+  // En modo "ambos equipos", el celular siempre puede responder (no espera turno);
+  // en modo "por turnos", solo cuando le corresponde a este equipo.
+  const isMyTurn = isQuestion && (isBothMode || gameState.turn === team);
+  // La clave de la pregunta no debe depender de "turn" en modo "ambos equipos"
+  // (ya que ese campo cambia localmente en la pantalla principal entre un
+  // equipo y otro dentro de la MISMA pregunta, y no debe reiniciar el estado
+  // de "ya respondí" de este celular).
+  const currentKey = isQuestion ? (isBothMode ? `both-${gameState.qIndex}` : `${gameState.qIndex}-${gameState.turn}`) : null;
   const hasAnswered = isQuestion && answeredForKey === currentKey;
+  const myAnswerIndex = isBothMode ? gameState.bothAnswers?.[team] ?? null : gameState.selected;
 
   // Reproduce el sonido de correcto/incorrecto una sola vez cuando llega la
   // retroalimentación de esta pregunta (evita repetirlo si el mensaje se reenvía).
@@ -2915,7 +3042,7 @@ function RemotePlayerApp({ code, team }) {
     if (!isMyTurn || !isQuestion || !gameState.showFeedback) return;
     if (playedFeedbackKeyRef.current === currentKey) return;
     playedFeedbackKeyRef.current = currentKey;
-    if (gameState.selected === gameState.correctIndex) playCorrectSound();
+    if (myAnswerIndex === gameState.correctIndex) playCorrectSound();
     else playIncorrectSound();
   }, [isMyTurn, isQuestion, gameState?.showFeedback, currentKey]);
 
@@ -3065,9 +3192,9 @@ function RemotePlayerApp({ code, team }) {
 
             {isMyTurn && gameState.showFeedback && (
               <div style={{ marginTop: 30 }}>
-                {gameState.selected === -1 ? (
+                {myAnswerIndex === -1 ? (
                   <p className="font-display" style={{ color: "#C0405A", fontSize: 22, fontWeight: 700 }}>⏱ Se acabó el tiempo</p>
-                ) : gameState.selected === gameState.correctIndex ? (
+                ) : myAnswerIndex === gameState.correctIndex ? (
                   <p className="font-display" style={{ color: "#1F6F5C", fontSize: 24, fontWeight: 700 }}>¡Correcto! 🎉</p>
                 ) : (
                   <p className="font-display" style={{ color: "#C0405A", fontSize: 24, fontWeight: 700 }}>Incorrecto</p>
