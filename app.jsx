@@ -62,6 +62,15 @@ const TikTokIcon = ({ size = 22 }) => (
     <path d="M15.8 6.2c.4 1.4 1.4 2.4 2.9 2.6v2.1c-1 .1-2-.2-2.9-.8v4.6c0 2.4-2 4.3-4.4 4.3s-4.4-1.9-4.4-4.3 2-4.3 4.4-4.3c.2 0 .5 0 .7.1v2.2a2.2 2.2 0 1 0 1.6 2.1V4.6h2.1v1.6z" fill="#fff" />
   </svg>
 );
+const Lock = (p) => <Icon {...p}><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M7 10V7a5 5 0 0 1 10 0v3" /></Icon>;
+const GoogleIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24">
+    <path fill="#4285F4" d="M23.49 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.47a5.54 5.54 0 0 1-2.4 3.63v3h3.87c2.27-2.09 3.55-5.17 3.55-8.82z" />
+    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.93-2.9l-3.87-3c-1.08.72-2.45 1.15-4.06 1.15-3.12 0-5.77-2.11-6.71-4.94H1.29v3.1A11.99 11.99 0 0 0 12 24z" />
+    <path fill="#FBBC05" d="M5.29 14.31A7.2 7.2 0 0 1 4.91 12c0-.8.14-1.58.38-2.31v-3.1H1.29A11.99 11.99 0 0 0 0 12c0 1.94.46 3.77 1.29 5.41l4-3.1z" />
+    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.94 1.19 15.24 0 12 0 7.31 0 3.26 2.69 1.29 6.59l4 3.1C6.23 6.86 8.88 4.75 12 4.75z" />
+  </svg>
+);
 
 /* ---------------------------------------------------------
    DATOS: banco de preguntas por libro bíblico
@@ -199,16 +208,20 @@ const FIREBASE_CONFIG = {
 };
 const FIRESTORE_COLLECTION = "biblegame";
 const FIRESTORE_DOC = "library";
+const USERS_COLLECTION = "users";
 
 let firestoreDb = null;
+let firebaseAuth = null;
 try {
   if (typeof firebase !== "undefined") {
     firebase.initializeApp(FIREBASE_CONFIG);
     firestoreDb = firebase.firestore();
+    firebaseAuth = firebase.auth();
   }
 } catch (e) {
   // Firebase no se pudo inicializar (bloqueado, sin internet, etc.): se usará localStorage como respaldo
   firestoreDb = null;
+  firebaseAuth = null;
 }
 
 // Abreviaturas usadas por la fuente de texto bíblico (Reina-Valera, dominio
@@ -570,6 +583,63 @@ function App() {
   const [librarySaveError, setLibrarySaveError] = useState(false);
   const [screenBeforeManage, setScreenBeforeManage] = useState("setup");
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // ---- Cuenta de usuario (Google, vía Firebase Authentication) ----
+  const [currentUser, setCurrentUser] = useState(null); // { uid, name, email, photoURL } | null
+  const [userRole, setUserRole] = useState(null); // "admin" | "user" | null (null = no ha iniciado sesión)
+  const [authLoading, setAuthLoading] = useState(Boolean(firebaseAuth));
+  const [authError, setAuthError] = useState("");
+
+  useEffect(() => {
+    if (!firebaseAuth) { setAuthLoading(false); return; }
+    const unsubscribe = firebaseAuth.onAuthStateChanged((user) => {
+      if (!user) {
+        setCurrentUser(null);
+        setUserRole(null);
+        setAuthLoading(false);
+        return;
+      }
+      setCurrentUser({ uid: user.uid, name: user.displayName || "Usuario", email: user.email, photoURL: user.photoURL });
+      if (!firestoreDb) { setUserRole("user"); setAuthLoading(false); return; }
+      const userRef = firestoreDb.collection(USERS_COLLECTION).doc(user.uid);
+      userRef.get().then((snap) => {
+        if (snap.exists) {
+          setUserRole(snap.data().role || "user");
+        } else {
+          // primera vez que esta persona inicia sesión: se crea su perfil con rol "user" por defecto
+          const profile = {
+            name: user.displayName || "Usuario",
+            email: user.email || "",
+            photoURL: user.photoURL || "",
+            role: "user",
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          };
+          userRef.set(profile).catch(() => {});
+          setUserRole("user");
+        }
+      }).catch(() => setUserRole("user"))
+        .finally(() => setAuthLoading(false));
+    });
+    return unsubscribe;
+  }, []);
+
+  function signInWithGoogle() {
+    if (!firebaseAuth) {
+      setAuthError("El inicio de sesión no está disponible en este momento.");
+      return;
+    }
+    setAuthError("");
+    const provider = new firebase.auth.GoogleAuthProvider();
+    firebaseAuth.signInWithPopup(provider).catch((err) => {
+      setAuthError("No se pudo iniciar sesión. Intenta de nuevo.");
+    });
+  }
+
+  function signOutUser() {
+    if (firebaseAuth) firebaseAuth.signOut();
+  }
+
+  const isAdmin = userRole === "admin";
 
   useEffect(() => {
     function handleFullscreenChange() {
@@ -980,6 +1050,8 @@ function App() {
           team2Color={team2Color} setTeam2Color={setTeam2Color} team2Icon={team2Icon} setTeam2Icon={setTeam2Icon}
           customCount={customCount}
           remoteMode={remoteMode} setRemoteMode={setRemoteMode}
+          currentUser={currentUser} userRole={userRole} authLoading={authLoading}
+          onSignIn={signInWithGoogle} onSignOut={signOutUser}
           onManage={() => openManage("setup")}
           onSettings={() => openSettings("setup")}
           onNext={goToBookSelect}
@@ -1010,30 +1082,50 @@ function App() {
       )}
 
       {screen === "manage" && (
-        <ManageQuestionsScreen
-          library={library}
-          onAddQuestion={addQuestionToBook}
-          onUpdateQuestion={updateQuestionInBook}
-          onDeleteQuestion={deleteQuestionFromBook}
-          onReorderQuestions={reorderQuestionsInBook}
-          saveError={librarySaveError}
-          loaded={libraryLoaded}
-          onBack={() => setScreen(screenBeforeManage)}
-        />
+        isAdmin ? (
+          <ManageQuestionsScreen
+            library={library}
+            onAddQuestion={addQuestionToBook}
+            onUpdateQuestion={updateQuestionInBook}
+            onDeleteQuestion={deleteQuestionFromBook}
+            onReorderQuestions={reorderQuestionsInBook}
+            saveError={librarySaveError}
+            loaded={libraryLoaded}
+            onBack={() => setScreen(screenBeforeManage)}
+          />
+        ) : (
+          <AdminGateScreen
+            title="Gestionar preguntas"
+            reason="Solo los administradores pueden agregar, editar o borrar preguntas."
+            authLoading={authLoading} currentUser={currentUser} userRole={userRole} authError={authError}
+            onSignIn={signInWithGoogle} onSignOut={signOutUser}
+            onBack={() => setScreen(screenBeforeManage)}
+          />
+        )
       )}
 
       {screen === "settings" && (
-        <SettingsScreen
-          difficultyTimers={difficultyTimers} setDifficultyTimer={setDifficultyTimer}
-          orderBasis={orderBasis} setOrderBasis={setOrderBasis}
-          questionOrder={questionOrder} setQuestionOrder={setQuestionOrder}
-          answerMode={answerMode} setAnswerMode={setAnswerMode}
-          feedbackDisplaySeconds={feedbackDisplaySeconds} setFeedbackDisplaySeconds={setFeedbackDisplaySeconds}
-          verseDisplaySeconds={verseDisplaySeconds} setVerseDisplaySeconds={setVerseDisplaySeconds}
-          backgroundColor={backgroundColor} setBackgroundColor={setBackgroundColor}
-          narrationEnabled={narrationEnabled} setNarrationEnabled={setNarrationEnabled}
-          onBack={() => setScreen(screenBeforeManage)}
-        />
+        isAdmin ? (
+          <SettingsScreen
+            difficultyTimers={difficultyTimers} setDifficultyTimer={setDifficultyTimer}
+            orderBasis={orderBasis} setOrderBasis={setOrderBasis}
+            questionOrder={questionOrder} setQuestionOrder={setQuestionOrder}
+            answerMode={answerMode} setAnswerMode={setAnswerMode}
+            feedbackDisplaySeconds={feedbackDisplaySeconds} setFeedbackDisplaySeconds={setFeedbackDisplaySeconds}
+            verseDisplaySeconds={verseDisplaySeconds} setVerseDisplaySeconds={setVerseDisplaySeconds}
+            backgroundColor={backgroundColor} setBackgroundColor={setBackgroundColor}
+            narrationEnabled={narrationEnabled} setNarrationEnabled={setNarrationEnabled}
+            onBack={() => setScreen(screenBeforeManage)}
+          />
+        ) : (
+          <AdminGateScreen
+            title="Configuración"
+            reason="Solo los administradores pueden cambiar la configuración del duelo."
+            authLoading={authLoading} currentUser={currentUser} userRole={userRole} authError={authError}
+            onSignIn={signInWithGoogle} onSignOut={signOutUser}
+            onBack={() => setScreen(screenBeforeManage)}
+          />
+        )
       )}
 
       {screen === "game" && currentQ && (
@@ -1165,10 +1257,42 @@ function LandingScreen({ onStart }) {
   );
 }
 
-function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Color, setTeam1Color, team1Icon, setTeam1Icon, team2Color, setTeam2Color, team2Icon, setTeam2Icon, customCount, remoteMode, setRemoteMode, onManage, onSettings, onNext }) {
+function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Color, setTeam1Color, team1Icon, setTeam1Icon, team2Color, setTeam2Color, team2Icon, setTeam2Icon, customCount, remoteMode, setRemoteMode, currentUser, userRole, authLoading, onSignIn, onSignOut, onManage, onSettings, onNext }) {
   const canContinue = team1Name.trim() && team2Name.trim();
   return (
     <div style={styles.container} className="fade-in">
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        {!authLoading && (
+          currentUser ? (
+            <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+              {currentUser.photoURL && (
+                <img src={currentUser.photoURL} alt={currentUser.name} style={{ width: 24, height: 24, borderRadius: "50%" }} />
+              )}
+              <span style={{ color: "#B8A98A" }}>
+                {currentUser.name}{userRole === "admin" && <span style={{ color: "#D9A93B", fontWeight: 700 }}> · admin</span>}
+              </span>
+              <button
+                type="button" onClick={onSignOut}
+                style={{ background: "none", border: "none", color: "#8FA0B8", textDecoration: "underline", cursor: "pointer", fontSize: 11.5 }}
+              >
+                Cerrar sesión
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button" className="font-ui"
+              onClick={onSignIn}
+              style={{
+                display: "flex", alignItems: "center", gap: 7, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+                background: "rgba(255,255,255,0.04)", border: "1.5px solid #3A5578", color: "#B8A98A", fontSize: 12,
+              }}
+            >
+              <GoogleIcon size={14} /> Iniciar sesión
+            </button>
+          )
+        )}
+      </div>
+
       <header style={{ textAlign: "center", marginBottom: 40 }}>
         <RoseWindow size={100} colorA={team1Color} colorB={team2Color} />
         <h1 className="font-display" style={styles.h1}>Debate Bíblico</h1>
@@ -1717,6 +1841,69 @@ function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books,
 /* ---------------------------------------------------------
    PANTALLA: Preguntas (crear, editar, borrar — de cualquier libro)
 --------------------------------------------------------- */
+function AdminGateScreen({ title, reason, authLoading, currentUser, userRole, authError, onSignIn, onSignOut, onBack }) {
+  return (
+    <div style={styles.container} className="fade-in">
+      <button
+        className="font-ui"
+        onClick={onBack}
+        style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#B8A98A", fontSize: 14, cursor: "pointer", marginBottom: 18 }}
+      >
+        <ArrowLeft size={16} /> Volver
+      </button>
+
+      <div style={{ ...styles.card, maxWidth: 420, margin: "40px auto 0", textAlign: "center" }}>
+        <Lock size={32} color="#B8892B" style={{ margin: "0 auto 14px" }} />
+        <h2 className="font-display" style={{ fontSize: 22, color: "#F5EFE0", margin: "0 0 8px" }}>{title}</h2>
+        <p className="font-ui" style={{ color: "#8FA0B8", fontSize: 13.5, marginBottom: 22 }}>{reason}</p>
+
+        {authLoading ? (
+          <p className="font-ui" style={{ color: "#8FA0B8", fontSize: 13 }}>Verificando tu sesión…</p>
+        ) : !currentUser ? (
+          <button
+            type="button" className="font-ui"
+            onClick={onSignIn}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 10, padding: "10px 20px", borderRadius: 10, cursor: "pointer",
+              background: "#F5EFE0", border: "1.5px solid #F5EFE0", color: "#16233D", fontSize: 14, fontWeight: 700,
+            }}
+          >
+            <GoogleIcon size={18} /> Iniciar sesión con Google
+          </button>
+        ) : (
+          <>
+            <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 14 }}>
+              {currentUser.photoURL && (
+                <img src={currentUser.photoURL} alt={currentUser.name} style={{ width: 32, height: 32, borderRadius: "50%" }} />
+              )}
+              <div style={{ textAlign: "left" }}>
+                <div style={{ color: "#F5EFE0", fontSize: 13.5, fontWeight: 700 }}>{currentUser.name}</div>
+                <div style={{ color: "#8FA0B8", fontSize: 11.5 }}>{currentUser.email}</div>
+              </div>
+            </div>
+            <p className="font-ui" style={{ color: "#C0405A", fontSize: 13, marginBottom: 14 }}>
+              Tu cuenta no tiene permisos de administrador (rol actual: {userRole || "usuario"}).
+            </p>
+            <button
+              type="button" className="font-ui"
+              onClick={onSignOut}
+              style={{
+                padding: "8px 16px", borderRadius: 8, cursor: "pointer",
+                background: "rgba(255,255,255,0.04)", border: "1.5px solid #3A5578", color: "#B8A98A", fontSize: 12.5, fontWeight: 700,
+              }}
+            >
+              Probar con otra cuenta
+            </button>
+          </>
+        )}
+        {authError && (
+          <p className="font-ui" style={{ color: "#C0405A", fontSize: 12.5, marginTop: 14 }}>{authError}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onReorderQuestions, saveError, loaded, onBack }) {
   const [selectedBookId, setSelectedBookId] = useState(library[0]?.id);
   const [qText, setQText] = useState("");
