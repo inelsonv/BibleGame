@@ -538,7 +538,7 @@ function TimerRing({ secondsLeft, totalSeconds, size = 60 }) {
    APP
 --------------------------------------------------------- */
 function App() {
-  const [screen, setScreen] = useState("setup");
+  const [screen, setScreen] = useState("landing");
   const [team1Name, setTeam1Name] = useState("");
   const [team2Name, setTeam2Name] = useState("");
   const [team1Color, setTeam1Color] = useState(TEAM_COLORS[0].hex);
@@ -968,6 +968,10 @@ function App() {
         </button>
       )}
 
+      {screen === "landing" && (
+        <LandingScreen onStart={() => setScreen("setup")} />
+      )}
+
       {screen === "setup" && (
         <SetupScreen
           team1Name={team1Name} setTeam1Name={setTeam1Name}
@@ -1081,6 +1085,86 @@ function App() {
 /* ---------------------------------------------------------
    PANTALLA 1: Configurar equipos
 --------------------------------------------------------- */
+function LandingScreen({ onStart }) {
+  const steps = [
+    { title: "Elige un libro bíblico", text: "Génesis, Éxodo, Salmos, Mateo, Juan, Hechos y más — o crea tus propias preguntas." },
+    { title: "Forma dos equipos", text: "Ponles nombre, color e ícono. Cada uno responde por turnos, o ambos a la vez, tú decides." },
+    { title: "Responde antes de que se acabe el tiempo", text: "Cada pregunta trae su versículo, con opción de búsqueda automática del texto bíblico." },
+    { title: "Corona a un campeón", text: "Al final, el equipo con más aciertos recibe su trofeo — con estadísticas y listo para compartir." },
+  ];
+  const features = [
+    { icon: Smartphone, label: "Modo remoto", text: "La pantalla grande muestra las preguntas; cada equipo responde desde su propio celular escaneando un QR." },
+    { icon: BookOpen, label: "Texto bíblico automático", text: "Escribe el capítulo y versículo, y la app busca el texto por ti." },
+    { icon: BarChart3, label: "Dificultad configurable", text: "Fácil, intermedio o difícil, con su propio tiempo de respuesta." },
+    { icon: Share2, label: "Comparte el resultado", text: "Genera una imagen lista para Instagram, Facebook o TikTok al terminar el duelo." },
+  ];
+  return (
+    <div style={styles.container} className="fade-in">
+      <header style={{ textAlign: "center", marginBottom: 36 }}>
+        <RoseWindow size={110} colorA="#8B2E3F" colorB="#1F6F5C" />
+        <h1 className="font-display" style={styles.h1}>Debate Bíblico</h1>
+        <p className="font-body" style={{ ...styles.subtitle, maxWidth: 480, margin: "0 auto" }}>
+          Un juego de preguntas y respuestas por equipos, pensado para grupos, iglesias y familias que quieren
+          poner a prueba (¡y celebrar!) cuánto conocen las Escrituras.
+        </p>
+        <button
+          className="font-ui"
+          style={{ ...styles.primaryBtn, marginTop: 26 }}
+          onClick={onStart}
+        >
+          Comenzar <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
+        </button>
+      </header>
+
+      <div className="font-ui" style={{ textAlign: "center", color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700, marginBottom: 16 }}>
+        Cómo se juega
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 560, margin: "0 auto 40px" }}>
+        {steps.map((s, i) => (
+          <div key={i} style={{ ...styles.card, maxWidth: "none", display: "flex", gap: 16, alignItems: "flex-start" }}>
+            <div className="font-display" style={{
+              width: 34, height: 34, borderRadius: "50%", flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center",
+              background: "rgba(184,137,43,0.16)", border: "1.5px solid #B8892B", color: "#D9A93B", fontWeight: 700, fontSize: 15,
+            }}>
+              {i + 1}
+            </div>
+            <div>
+              <div className="font-ui" style={{ color: "#F5EFE0", fontWeight: 700, fontSize: 14.5, marginBottom: 3 }}>{s.title}</div>
+              <div className="font-ui" style={{ color: "#8FA0B8", fontSize: 13 }}>{s.text}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="font-ui" style={{ textAlign: "center", color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700, marginBottom: 16 }}>
+        Funciones destacadas
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, maxWidth: 720, margin: "0 auto 40px" }}>
+        {features.map((f, i) => {
+          const FeatureIcon = f.icon;
+          return (
+            <div key={i} style={{ ...styles.card, maxWidth: "none" }}>
+              <FeatureIcon size={22} color="#D9A93B" />
+              <div className="font-ui" style={{ color: "#F5EFE0", fontWeight: 700, fontSize: 14, marginTop: 10, marginBottom: 4 }}>{f.label}</div>
+              <div className="font-ui" style={{ color: "#8FA0B8", fontSize: 12.5, lineHeight: 1.5 }}>{f.text}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ textAlign: "center", paddingBottom: 10 }}>
+        <button
+          className="font-ui"
+          style={styles.primaryBtn}
+          onClick={onStart}
+        >
+          Comenzar <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Color, setTeam1Color, team1Icon, setTeam1Icon, team2Color, setTeam2Color, team2Icon, setTeam2Icon, customCount, remoteMode, setRemoteMode, onManage, onSettings, onNext }) {
   const canContinue = team1Name.trim() && team2Name.trim();
   return (
