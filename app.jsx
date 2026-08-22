@@ -641,6 +641,12 @@ function App() {
 
   const isAdmin = userRole === "admin";
 
+  // Si el usuario inicia sesión mientras está en la pantalla de login (pidiéndola
+  // para poder jugar), lo llevamos automáticamente a configurar los equipos.
+  useEffect(() => {
+    if (screen === "login" && currentUser) setScreen("setup");
+  }, [screen, currentUser]);
+
   // ---- Panel de administradores: solo se carga la lista de usuarios
   // registrados cuando quien tiene la sesión abierta es admin. ----
   const [allUsers, setAllUsers] = useState([]);
@@ -1062,7 +1068,15 @@ function App() {
       )}
 
       {screen === "landing" && (
-        <LandingScreen onStart={() => setScreen("setup")} />
+        <LandingScreen onStart={() => setScreen(currentUser ? "setup" : "login")} />
+      )}
+
+      {screen === "login" && (
+        <LoginScreen
+          authLoading={authLoading} currentUser={currentUser} authError={authError}
+          onSignIn={signInWithGoogle}
+          onBack={() => setScreen("landing")}
+        />
       )}
 
       {screen === "setup" && (
@@ -1920,6 +1934,48 @@ function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books,
 /* ---------------------------------------------------------
    PANTALLA: Preguntas (crear, editar, borrar — de cualquier libro)
 --------------------------------------------------------- */
+function LoginScreen({ authLoading, currentUser, authError, onSignIn, onBack }) {
+  return (
+    <div style={styles.container} className="fade-in">
+      <button
+        className="font-ui"
+        onClick={onBack}
+        style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#B8A98A", fontSize: 14, cursor: "pointer", marginBottom: 18 }}
+      >
+        <ArrowLeft size={16} /> Volver
+      </button>
+
+      <div style={{ ...styles.card, maxWidth: 420, margin: "40px auto 0", textAlign: "center" }}>
+        <RoseWindow size={70} colorA="#8B2E3F" colorB="#1F6F5C" />
+        <h2 className="font-display" style={{ fontSize: 22, color: "#F5EFE0", margin: "10px 0 8px" }}>Inicia sesión para jugar</h2>
+        <p className="font-ui" style={{ color: "#8FA0B8", fontSize: 13.5, marginBottom: 22 }}>
+          Para empezar una partida necesitas una cuenta. Usa tu cuenta de Google — es rápido y no necesitas crear otra contraseña.
+        </p>
+
+        {authLoading ? (
+          <p className="font-ui" style={{ color: "#8FA0B8", fontSize: 13 }}>Verificando tu sesión…</p>
+        ) : currentUser ? (
+          <p className="font-ui" style={{ color: "#4CA98D", fontSize: 13.5, fontWeight: 700 }}>¡Sesión iniciada! Entrando…</p>
+        ) : (
+          <button
+            type="button" className="font-ui"
+            onClick={onSignIn}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 10, padding: "11px 22px", borderRadius: 10, cursor: "pointer",
+              background: "#F5EFE0", border: "1.5px solid #F5EFE0", color: "#16233D", fontSize: 14.5, fontWeight: 700,
+            }}
+          >
+            <GoogleIcon size={19} /> Continuar con Google
+          </button>
+        )}
+        {authError && (
+          <p className="font-ui" style={{ color: "#C0405A", fontSize: 12.5, marginTop: 14 }}>{authError}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdminGateScreen({ title, reason, authLoading, currentUser, userRole, authError, onSignIn, onSignOut, onBack }) {
   return (
     <div style={styles.container} className="fade-in">
