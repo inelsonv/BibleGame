@@ -641,6 +641,29 @@ function App() {
 
   const isAdmin = userRole === "admin";
 
+  // ---- Panel de administradores: solo se carga la lista de usuarios
+  // registrados cuando quien tiene la sesión abierta es admin. ----
+  const [allUsers, setAllUsers] = useState([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
+  useEffect(() => {
+    if (!isAdmin || !firestoreDb) { setAllUsers([]); setUsersLoaded(false); return; }
+    const unsubscribe = firestoreDb.collection(USERS_COLLECTION).onSnapshot(
+      (snap) => {
+        const users = snap.docs.map((doc) => ({ uid: doc.id, ...doc.data() }));
+        users.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        setAllUsers(users);
+        setUsersLoaded(true);
+      },
+      () => setUsersLoaded(true)
+    );
+    return unsubscribe;
+  }, [isAdmin]);
+
+  function setUserRoleByUid(uid, role) {
+    if (!firestoreDb) return;
+    firestoreDb.collection(USERS_COLLECTION).doc(uid).update({ role }).catch(() => {});
+  }
+
   useEffect(() => {
     function handleFullscreenChange() {
       setIsFullscreen(Boolean(document.fullscreenElement));
@@ -1076,6 +1099,7 @@ function App() {
           team1Name={teamName(1)} team2Name={teamName(2)}
           team1Color={team1Color} team2Color={team2Color}
           books={library}
+          userRole={userRole}
           onSelect={startGame}
           onManage={() => openManage("book")}
         />
@@ -1115,6 +1139,7 @@ function App() {
             verseDisplaySeconds={verseDisplaySeconds} setVerseDisplaySeconds={setVerseDisplaySeconds}
             backgroundColor={backgroundColor} setBackgroundColor={setBackgroundColor}
             narrationEnabled={narrationEnabled} setNarrationEnabled={setNarrationEnabled}
+            allUsers={allUsers} usersLoaded={usersLoaded} currentUser={currentUser} onSetUserRole={setUserRoleByUid}
             onBack={() => setScreen(screenBeforeManage)}
           />
         ) : (
@@ -1372,25 +1397,27 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
           {remoteMode === "host" ? "Conectar celulares" : "Elegir libro bíblico"} <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
         </button>
 
-        <div style={{ display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap", marginTop: 16 }}>
-          <button
-            className="font-ui"
-            onClick={onManage}
-            style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
-          >
-            <PenLine size={14} />
-            {customCount > 0 ? `Editar mis preguntas (${customCount})` : "Agregar mis propias preguntas"}
-          </button>
+        {userRole === "admin" && (
+          <div style={{ display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap", marginTop: 16 }}>
+            <button
+              className="font-ui"
+              onClick={onManage}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
+            >
+              <PenLine size={14} />
+              {customCount > 0 ? `Editar mis preguntas (${customCount})` : "Agregar mis propias preguntas"}
+            </button>
 
-          <button
-            className="font-ui"
-            onClick={onSettings}
-            style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
-          >
-            <Settings size={14} />
-            Configuración
-          </button>
-        </div>
+            <button
+              className="font-ui"
+              onClick={onSettings}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
+            >
+              <Settings size={14} />
+              Configuración
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1587,7 +1614,7 @@ function TeamCard({ label, name, setName, color, setColor, icon, setIcon }) {
 /* ---------------------------------------------------------
    PANTALLA: Configuración
 --------------------------------------------------------- */
-function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setOrderBasis, questionOrder, setQuestionOrder, answerMode, setAnswerMode, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
+function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setOrderBasis, questionOrder, setQuestionOrder, answerMode, setAnswerMode, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, allUsers, usersLoaded, currentUser, onSetUserRole, onBack }) {
   return (
     <div style={styles.container} className="fade-in">
       <button
@@ -1788,6 +1815,56 @@ function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setO
           <input type="checkbox" checked={narrationEnabled} onChange={(e) => setNarrationEnabled(e.target.checked)} style={{ width: 20, height: 20 }} />
         </label>
       </div>
+
+      <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
+        <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 14 }}>
+          <Lock size={16} /> Administradores
+        </div>
+        <p className="font-ui" style={{ fontSize: 12, color: "#8FA0B8", marginBottom: 14 }}>
+          Los administradores pueden editar preguntas y cambiar esta configuración. Aquí puedes dar o quitar ese permiso a cualquier persona que ya haya iniciado sesión al menos una vez.
+        </p>
+        {!usersLoaded ? (
+          <p className="font-ui" style={{ fontSize: 12.5, color: "#8FA0B8" }}>Cargando usuarios…</p>
+        ) : allUsers.length === 0 ? (
+          <p className="font-ui" style={{ fontSize: 12.5, color: "#8FA0B8" }}>Todavía no hay usuarios registrados.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {allUsers.map((u) => {
+              const isSelf = currentUser && u.uid === currentUser.uid;
+              const isUserAdmin = u.role === "admin";
+              return (
+                <div key={u.uid} className="font-ui" style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8,
+                  background: "rgba(255,255,255,0.03)", border: "1.5px solid #3A5578",
+                }}>
+                  {u.photoURL && <img src={u.photoURL} alt={u.name} style={{ width: 28, height: 28, borderRadius: "50%", flex: "0 0 auto" }} />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: "#F5EFE0", fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {u.name || "Sin nombre"} {isSelf && <span style={{ color: "#8FA0B8", fontWeight: 400 }}>(tú)</span>}
+                    </div>
+                    <div style={{ color: "#8FA0B8", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onSetUserRole(u.uid, isUserAdmin ? "user" : "admin")}
+                    disabled={isSelf}
+                    title={isSelf ? "No puedes cambiar tu propio rol desde aquí" : undefined}
+                    style={{
+                      flex: "0 0 auto", padding: "5px 11px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                      cursor: isSelf ? "not-allowed" : "pointer", opacity: isSelf ? 0.5 : 1,
+                      background: isUserAdmin ? "rgba(184,137,43,0.16)" : "rgba(255,255,255,0.04)",
+                      border: isUserAdmin ? "1.5px solid #B8892B" : "1.5px solid #3A5578",
+                      color: isUserAdmin ? "#D9A93B" : "#B8A98A",
+                    }}
+                  >
+                    {isUserAdmin ? "★ Admin" : "Hacer admin"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1795,7 +1872,7 @@ function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setO
 /* ---------------------------------------------------------
    PANTALLA 2: Elegir libro
 --------------------------------------------------------- */
-function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books, onSelect, onManage }) {
+function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books, userRole, onSelect, onManage }) {
   return (
     <div style={styles.container} className="fade-in">
       <header style={{ textAlign: "center", marginBottom: 8 }}>
@@ -1823,16 +1900,18 @@ function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books,
         })}
       </div>
 
-      <div style={{ textAlign: "center" }}>
-        <button
-          className="font-ui"
-          onClick={onManage}
-          style={{ display: "flex", alignItems: "center", gap: 6, margin: "22px auto 0", background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
-        >
-          <PenLine size={14} />
-          Agregar o editar mis preguntas
-        </button>
-      </div>
+      {userRole === "admin" && (
+        <div style={{ textAlign: "center" }}>
+          <button
+            className="font-ui"
+            onClick={onManage}
+            style={{ display: "flex", alignItems: "center", gap: 6, margin: "22px auto 0", background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
+          >
+            <PenLine size={14} />
+            Agregar o editar mis preguntas
+          </button>
+        </div>
+      )}
     </div>
   );
 }
