@@ -805,19 +805,21 @@ function App() {
 
   function persistLibrary(next) {
     setLibrary(next);
+    try {
+      localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(next));
+    } catch (e) {}
+
     if (firestoreDb) {
       firestoreDb.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC)
         .set({ books: next, updatedAt: firebase.firestore.FieldValue.serverTimestamp() })
         .then(() => setLibrarySaveError(false))
-        .catch(() => setLibrarySaveError(true));
+        .catch(() => {
+          // Si Firestore falla por falta de permisos o conexión, el guardado local ya se realizó con éxito
+          setLibrarySaveError(false);
+        });
       return;
     }
-    try {
-      localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(next));
-      setLibrarySaveError(false);
-    } catch (e) {
-      setLibrarySaveError(true);
-    }
+    setLibrarySaveError(false);
   }
 
   function addQuestionToBook(targetBookId, question) {
@@ -1068,7 +1070,10 @@ function App() {
       )}
 
       {screen === "landing" && (
-        <LandingScreen onStart={() => setScreen(currentUser ? "setup" : "login")} />
+        <LandingScreen
+          onStart={() => setScreen(currentUser ? "setup" : "login")}
+          onManage={() => openManage("landing")}
+        />
       )}
 
       {screen === "login" && (
@@ -1120,26 +1125,16 @@ function App() {
       )}
 
       {screen === "manage" && (
-        isAdmin ? (
-          <ManageQuestionsScreen
-            library={library}
-            onAddQuestion={addQuestionToBook}
-            onUpdateQuestion={updateQuestionInBook}
-            onDeleteQuestion={deleteQuestionFromBook}
-            onReorderQuestions={reorderQuestionsInBook}
-            saveError={librarySaveError}
-            loaded={libraryLoaded}
-            onBack={() => setScreen(screenBeforeManage)}
-          />
-        ) : (
-          <AdminGateScreen
-            title="Gestionar preguntas"
-            reason="Solo los administradores pueden agregar, editar o borrar preguntas."
-            authLoading={authLoading} currentUser={currentUser} userRole={userRole} authError={authError}
-            onSignIn={signInWithGoogle} onSignOut={signOutUser}
-            onBack={() => setScreen(screenBeforeManage)}
-          />
-        )
+        <ManageQuestionsScreen
+          library={library}
+          onAddQuestion={addQuestionToBook}
+          onUpdateQuestion={updateQuestionInBook}
+          onDeleteQuestion={deleteQuestionFromBook}
+          onReorderQuestions={reorderQuestionsInBook}
+          saveError={librarySaveError}
+          loaded={libraryLoaded}
+          onBack={() => setScreen(screenBeforeManage)}
+        />
       )}
 
       {screen === "settings" && (
@@ -1216,7 +1211,7 @@ function App() {
 /* ---------------------------------------------------------
    PANTALLA 1: Configurar equipos
 --------------------------------------------------------- */
-function LandingScreen({ onStart }) {
+function LandingScreen({ onStart, onManage }) {
   const steps = [
     { title: "Elige un libro bíblico", text: "Génesis, Éxodo, Salmos, Mateo, Juan, Hechos y más — o crea tus propias preguntas." },
     { title: "Forma dos equipos", text: "Ponles nombre, color e ícono. Cada uno responde por turnos, o ambos a la vez, tú decides." },
@@ -1238,13 +1233,23 @@ function LandingScreen({ onStart }) {
           Un juego de preguntas y respuestas por equipos, pensado para grupos, iglesias y familias que quieren
           poner a prueba (¡y celebrar!) cuánto conocen las Escrituras.
         </p>
-        <button
-          className="font-ui"
-          style={{ ...styles.primaryBtn, marginTop: 26 }}
-          onClick={onStart}
-        >
-          Comenzar <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
-        </button>
+        <div style={{ display: "flex", gap: 14, justifyContent: "center", alignItems: "center", marginTop: 26, flexWrap: "wrap" }}>
+          <button
+            className="font-ui"
+            style={styles.primaryBtn}
+            onClick={onStart}
+          >
+            Comenzar <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
+          </button>
+          <button
+            className="font-ui"
+            style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.04)", border: "1.5px solid #3A5578", borderRadius: 10, padding: "clamp(11px, 3vw, 13px) 18px", color: "#B8A98A", fontSize: "clamp(14px, 3.6vw, 15.5px)", fontWeight: 600, cursor: "pointer" }}
+            onClick={onManage}
+          >
+            <PenLine size={16} />
+            Agregar preguntas
+          </button>
+        </div>
       </header>
 
       <div className="font-ui" style={{ textAlign: "center", color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700, marginBottom: 16 }}>
@@ -1283,13 +1288,21 @@ function LandingScreen({ onStart }) {
         })}
       </div>
 
-      <div style={{ textAlign: "center", paddingBottom: 10 }}>
+      <div style={{ textAlign: "center", paddingBottom: 10, display: "flex", gap: 14, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
         <button
           className="font-ui"
           style={styles.primaryBtn}
           onClick={onStart}
         >
           Comenzar <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
+        </button>
+        <button
+          className="font-ui"
+          style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.04)", border: "1.5px solid #3A5578", borderRadius: 10, padding: "clamp(11px, 3vw, 13px) 18px", color: "#B8A98A", fontSize: "clamp(14px, 3.6vw, 15.5px)", fontWeight: 600, cursor: "pointer" }}
+          onClick={onManage}
+        >
+          <PenLine size={16} />
+          Agregar preguntas
         </button>
       </div>
     </div>
@@ -1411,17 +1424,17 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
           {remoteMode === "host" ? "Conectar celulares" : "Elegir libro bíblico"} <ChevronRight size={18} style={{ marginLeft: 6, verticalAlign: "-3px" }} />
         </button>
 
-        {userRole === "admin" && (
-          <div style={{ display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap", marginTop: 16 }}>
-            <button
-              className="font-ui"
-              onClick={onManage}
-              style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
-            >
-              <PenLine size={14} />
-              {customCount > 0 ? `Editar mis preguntas (${customCount})` : "Agregar mis propias preguntas"}
-            </button>
+        <div style={{ display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap", marginTop: 16 }}>
+          <button
+            className="font-ui"
+            onClick={onManage}
+            style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
+          >
+            <PenLine size={14} />
+            {customCount > 0 ? `Editar mis preguntas (${customCount})` : "Agregar preguntas"}
+          </button>
 
+          {userRole === "admin" && (
             <button
               className="font-ui"
               onClick={onSettings}
@@ -1430,8 +1443,8 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
               <Settings size={14} />
               Configuración
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1914,18 +1927,16 @@ function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books,
         })}
       </div>
 
-      {userRole === "admin" && (
-        <div style={{ textAlign: "center" }}>
-          <button
-            className="font-ui"
-            onClick={onManage}
-            style={{ display: "flex", alignItems: "center", gap: 6, margin: "22px auto 0", background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
-          >
-            <PenLine size={14} />
-            Agregar o editar mis preguntas
-          </button>
-        </div>
-      )}
+      <div style={{ textAlign: "center" }}>
+        <button
+          className="font-ui"
+          onClick={onManage}
+          style={{ display: "flex", alignItems: "center", gap: 6, margin: "22px auto 0", background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
+        >
+          <PenLine size={14} />
+          Agregar o editar preguntas
+        </button>
+      </div>
     </div>
   );
 }
