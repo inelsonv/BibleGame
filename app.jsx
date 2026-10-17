@@ -862,9 +862,11 @@ function App() {
       firestoreDb.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC)
         .set({ books: next, updatedAt: firebase.firestore.FieldValue.serverTimestamp() })
         .then(() => setLibrarySaveError(false))
-        .catch(() => {
-          // Si Firestore falla por falta de permisos o conexión, el guardado local ya se realizó con éxito
-          setLibrarySaveError(false);
+        .catch((err) => {
+          // Firestore revierte la escritura local cuando el servidor la rechaza (permisos o conexión);
+          // por eso la pregunta "desaparece". Se muestra el error en vez de ocultarlo.
+          console.error("Firestore no guardó la biblioteca:", err);
+          setLibrarySaveError(err && err.code === "permission-denied" ? "permission" : true);
         });
       return;
     }
@@ -3000,7 +3002,9 @@ function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdate
         )}
         {saveError && (
           <div className="font-ui" style={{ marginTop: 12, color: "#C0405A", fontSize: 13 }}>
-            No se pudo guardar. Revisa tu conexión e intenta de nuevo.
+            {saveError === "permission"
+              ? "No se pudo guardar: la base de datos rechazó la escritura (permisos de Firestore). Avisa al administrador."
+              : "No se pudo guardar. Revisa tu conexión e intenta de nuevo."}
           </div>
         )}
 
