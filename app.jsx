@@ -428,8 +428,8 @@ function parseTimer(value) {
   if (!Number.isFinite(n) || n <= 0) return null;
   return Math.min(600, Math.max(5, n));
 }
-function questionTimerSeconds(q, difficultyTimers) {
-  if (q && Number.isFinite(q.timer) && q.timer > 0) return Math.round(q.timer);
+function questionTimerSeconds(q, difficultyTimers, ignoreOwnTimer = false) {
+  if (!ignoreOwnTimer && q && Number.isFinite(q.timer) && q.timer > 0) return Math.round(q.timer);
   return difficultyTimers[q?.difficulty] ?? difficultyTimers[1] ?? 20;
 }
 
@@ -575,6 +575,12 @@ function App() {
   function setDifficultyTimer(level, seconds) {
     setDifficultyTimers((prev) => ({ ...prev, [level]: seconds }));
   }
+  // Tiempo general: el mismo para todas las dificultades de una sola vez
+  function setAllDifficultyTimers(seconds) {
+    setDifficultyTimers({ 1: seconds, 2: seconds, 3: seconds });
+  }
+  // Si está activo, se ignora el tiempo propio de cada pregunta y rige el tiempo general/por dificultad
+  const [ignoreQuestionTimers, setIgnoreQuestionTimers] = useState(false);
   const [orderBasis, setOrderBasis] = useState("sequence"); // "sequence" | "difficulty"
   const [questionOrder, setQuestionOrder] = useState("random"); // "random" | "numeric" | "alternating"
   const [answerMode, setAnswerMode] = useState("turns"); // "turns" | "both"
@@ -874,7 +880,7 @@ function App() {
   // cada vez que algo relevante cambia (nueva pregunta, turno, respuesta...).
   useEffect(() => {
     if (remoteMode !== "host" || screen !== "game" || !currentQ) return;
-    const timerSeconds = questionTimerSeconds(currentQ, difficultyTimers);
+    const timerSeconds = questionTimerSeconds(currentQ, difficultyTimers, ignoreQuestionTimers);
     broadcastToTeams({
       type: "question",
       bookName: currentQ.bookName || book?.name || matchTitle,
@@ -1110,6 +1116,7 @@ function App() {
       {screen === "settings" && (
         <SettingsScreen
           difficultyTimers={difficultyTimers} setDifficultyTimer={setDifficultyTimer}
+          setAllTimers={setAllDifficultyTimers} ignoreQuestionTimers={ignoreQuestionTimers} setIgnoreQuestionTimers={setIgnoreQuestionTimers}
           orderBasis={orderBasis} setOrderBasis={setOrderBasis}
           questionOrder={questionOrder} setQuestionOrder={setQuestionOrder}
           answerMode={answerMode} setAnswerMode={setAnswerMode}
@@ -1137,7 +1144,7 @@ function App() {
           showFeedback={showFeedback}
           answerMode={answerMode}
           bothAnswers={bothAnswers}
-          difficultyTimers={difficultyTimers}
+          difficultyTimers={difficultyTimers} ignoreQuestionTimers={ignoreQuestionTimers}
           feedbackDisplaySeconds={feedbackDisplaySeconds}
           verseDisplaySeconds={verseDisplaySeconds}
           narrationEnabled={narrationEnabled}
@@ -1572,7 +1579,7 @@ function TeamCard({ label, name, setName, color, setColor, icon, setIcon }) {
 /* ---------------------------------------------------------
    PANTALLA: Configuración
 --------------------------------------------------------- */
-function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setOrderBasis, questionOrder, setQuestionOrder, answerMode, setAnswerMode, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
+function SettingsScreen({ difficultyTimers, setDifficultyTimer, setAllTimers, ignoreQuestionTimers, setIgnoreQuestionTimers, orderBasis, setOrderBasis, questionOrder, setQuestionOrder, answerMode, setAnswerMode, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
   return (
     <div style={styles.container} className="fade-in">
       <button
@@ -1590,8 +1597,40 @@ function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setO
 
       <div style={{ ...styles.card, maxWidth: 420, margin: "0 auto" }}>
         <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>
-          <Timer size={16} /> Tiempo por pregunta según dificultad
+          <Timer size={16} /> Tiempo por pregunta
         </div>
+        {(() => {
+          const values = DIFFICULTIES.map((d) => difficultyTimers[d.level]);
+          const allSame = values.every((v) => v === values[0]);
+          return (
+            <div style={{ paddingBottom: 18, marginBottom: 18, borderBottom: "1px solid #3A5578" }}>
+              <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ color: "#F5EFE0", fontSize: 13, fontWeight: 700 }}>Tiempo general (todas las dificultades)</span>
+                <span className="font-display" style={{ color: "#F5EFE0", fontSize: 18 }}>{allSame ? formatDuration(values[0]) : "Distintos"}</span>
+              </div>
+              <input
+                className="gold-range"
+                type="range"
+                min={5}
+                max={300}
+                step={5}
+                value={allSame ? values[0] : Math.round(values.reduce((a, b) => a + b, 0) / values.length / 5) * 5}
+                onChange={(e) => setAllTimers(Number(e.target.value))}
+                aria-label="Segundos por pregunta para todas las dificultades"
+              />
+              <div className="font-ui" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#8FA0B8", marginTop: 4 }}>
+                <span>5s</span><span>5 min</span>
+              </div>
+              <label className="font-ui" style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, color: "#F5EFE0", fontSize: 12.5, cursor: "pointer" }}>
+                <input type="checkbox" checked={ignoreQuestionTimers} onChange={(e) => setIgnoreQuestionTimers(e.target.checked)} style={{ width: 18, height: 18 }} />
+                <span>Ignorar el tiempo propio de cada pregunta
+                  <br /><span style={{ color: "#8FA0B8", fontSize: 11.5 }}>Todas usan el tiempo de su dificultad (o el general de arriba).</span>
+                </span>
+              </label>
+            </div>
+          );
+        })()}
+        <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginBottom: 14 }}>Ajuste fino por dificultad:</div>
         {DIFFICULTIES.map((d, i) => (
           <div key={d.level} style={{ marginTop: i > 0 ? 20 : 0 }}>
             <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -2978,9 +3017,9 @@ function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdate
 /* ---------------------------------------------------------
    PANTALLA 3: Juego
 --------------------------------------------------------- */
-function GameScreen({ book, matchTitle, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, answerMode, bothAnswers, difficultyTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, remoteMode, remoteStatus, teamPhotos, onAnswer, onNext }) {
+function GameScreen({ book, matchTitle, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, answerMode, bothAnswers, difficultyTimers, ignoreQuestionTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, remoteMode, remoteStatus, teamPhotos, onAnswer, onNext }) {
   const activeColor = teamColor(turn);
-  const timerSeconds = questionTimerSeconds(currentQ, difficultyTimers);
+  const timerSeconds = questionTimerSeconds(currentQ, difficultyTimers, ignoreQuestionTimers);
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
   const [verseVisible, setVerseVisible] = useState(false);
   const [verseSecondsLeft, setVerseSecondsLeft] = useState(verseDisplaySeconds);
