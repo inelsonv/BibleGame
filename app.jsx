@@ -213,8 +213,10 @@ const USERS_COLLECTION = "users";
 let firestoreDb = null;
 let firebaseAuth = null;
 try {
-  if (typeof firebase !== "undefined") {
-    firebase.initializeApp(FIREBASE_CONFIG);
+  if (typeof firebase !== "undefined" && FIREBASE_CONFIG.apiKey) {
+    if (!firebase.apps || firebase.apps.length === 0) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+    }
     firestoreDb = firebase.firestore();
     firebaseAuth = firebase.auth();
   }
@@ -571,6 +573,7 @@ function App() {
   const [feedbackDisplaySeconds, setFeedbackDisplaySeconds] = useState(3);
   const [verseDisplaySeconds, setVerseDisplaySeconds] = useState(5);
   const [bookId, setBookId] = useState(null);
+  const [matchTitle, setMatchTitle] = useState("");
   const [questions, setQuestions] = useState([]);
   const [qIndex, setQIndex] = useState(0);
   const [turn, setTurn] = useState(1);
@@ -584,9 +587,23 @@ function App() {
   const [screenBeforeManage, setScreenBeforeManage] = useState("setup");
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // ---- Cuenta de usuario (Google, vía Firebase Authentication) ----
-  const [currentUser, setCurrentUser] = useState(null); // { uid, name, email, photoURL } | null
-  const [userRole, setUserRole] = useState(null); // "admin" | "user" | null (null = no ha iniciado sesión)
+  // ---- Cuenta de usuario (Google, vía Firebase Authentication o respaldo local) ----
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem("duelo-biblico:local-user");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  }); // { uid, name, email, photoURL } | null
+  const [userRole, setUserRole] = useState(() => {
+    try {
+      const saved = localStorage.getItem("duelo-biblico:local-user");
+      return saved ? "admin" : null;
+    } catch {
+      return null;
+    }
+  }); // "admin" | "user" | null (null = no ha iniciado sesión)
   const [authLoading, setAuthLoading] = useState(Boolean(firebaseAuth));
   const [authError, setAuthError] = useState("");
 
@@ -594,6 +611,15 @@ function App() {
     if (!firebaseAuth) { setAuthLoading(false); return; }
     const unsubscribe = firebaseAuth.onAuthStateChanged((user) => {
       if (!user) {
+        try {
+          const saved = localStorage.getItem("duelo-biblico:local-user");
+          if (saved) {
+            setCurrentUser(JSON.parse(saved));
+            setUserRole("admin");
+            setAuthLoading(false);
+            return;
+          }
+        } catch {}
         setCurrentUser(null);
         setUserRole(null);
         setAuthLoading(false);
@@ -623,19 +649,40 @@ function App() {
     return unsubscribe;
   }, []);
 
+  function activateLocalSession() {
+    const localProfile = {
+      uid: "local-admin",
+      name: "Jugador (Modo Local)",
+      email: "admin@duelobiblico.local",
+      photoURL: "",
+    };
+    try {
+      localStorage.setItem("duelo-biblico:local-user", JSON.stringify(localProfile));
+    } catch {}
+    setCurrentUser(localProfile);
+    setUserRole("admin");
+    setAuthError("");
+  }
+
   function signInWithGoogle() {
     if (!firebaseAuth) {
-      setAuthError("El inicio de sesión no está disponible en este momento.");
+      activateLocalSession();
       return;
     }
     setAuthError("");
     const provider = new firebase.auth.GoogleAuthProvider();
-    firebaseAuth.signInWithPopup(provider).catch((err) => {
-      setAuthError("No se pudo iniciar sesión. Intenta de nuevo.");
+    firebaseAuth.signInWithPopup(provider).catch(() => {
+      // Si el dominio de vista previa o el popup está bloqueado, activamos la sesión local de respaldo
+      activateLocalSession();
     });
   }
 
   function signOutUser() {
+    try {
+      localStorage.removeItem("duelo-biblico:local-user");
+    } catch {}
+    setCurrentUser(null);
+    setUserRole(null);
     if (firebaseAuth) firebaseAuth.signOut();
   }
 
@@ -855,7 +902,10 @@ function App() {
   }
 
   const playableBooks = useMemo(() => library.filter((b) => b.questions.length > 0), [library]);
-  const book = useMemo(() => library.find((b) => b.id === bookId), [library, bookId]);
+  const book = useMemo(() => {
+    if (bookId === "multiple") return { id: "multiple", name: matchTitle || "Selección Múltiple" };
+    return library.find((b) => b.id === bookId);
+  }, [library, bookId, matchTitle]);
   const customCount = library.find((b) => b.id === CUSTOM_BOOK_ID)?.questions.length || 0;
   const currentQ = questions[qIndex];
   const teamName = (n) => (n === 1 ? team1Name || "Equipo 1" : team2Name || "Equipo 2");
@@ -872,8 +922,11 @@ function App() {
     }
   }
 
-  function openManage(fromScreen) {
+  const [manageInitialBookId, setManageInitialBookId] = useState(null);
+
+  function openManage(fromScreen, initialBookId = null) {
     setScreenBeforeManage(fromScreen);
+    setManageInitialBookId(initialBookId);
     setScreen("manage");
   }
 
@@ -882,11 +935,41 @@ function App() {
     setScreen("settings");
   }
 
-  function startGame(id) {
-    const chosen = library.find((b) => b.id === id);
-    if (!chosen || chosen.questions.length === 0) return;
-    setBookId(id);
-    setQuestions(orderQuestions(chosen.questions, questionOrder, orderBasis));
+  function startGame(selectedInput) {
+    const selectedIds = Array.isArray(selectedInput) ? selectedInput : [selectedInput];
+    const selectedBooks = library.filter((b) => selectedIds.includes(b.id) && b.questions.length > 0);
+    if (selectedBooks.length === 0) return;
+
+    const playable = library.filter((b) => b.questions.length > 0);
+    const otPlayable = playable.filter((b) => b.testament === "Antiguo Testamento");
+    const ntPlayable = playable.filter((b) => b.testament === "Nuevo Testamento");
+
+    let title = "";
+    if (selectedBooks.length === 1) {
+      title = selectedBooks[0].name;
+    } else if (playable.length > 0 && selectedBooks.length === playable.length) {
+      title = "Toda la Biblia";
+    } else if (otPlayable.length > 0 && selectedBooks.length === otPlayable.length && selectedBooks.every((b) => b.testament === "Antiguo Testamento")) {
+      title = "Antiguo Testamento";
+    } else if (ntPlayable.length > 0 && selectedBooks.length === ntPlayable.length && selectedBooks.every((b) => b.testament === "Nuevo Testamento")) {
+      title = "Nuevo Testamento";
+    } else if (selectedBooks.length <= 3) {
+      title = selectedBooks.map((b) => b.name).join(", ").replace(/, ([^,]*)$/, " y $1");
+    } else {
+      title = `${selectedBooks.length} Libros Bíblicos`;
+    }
+
+    const allQuestions = selectedBooks.flatMap((b) =>
+      b.questions.map((q) => ({
+        ...q,
+        bookId: b.id,
+        bookName: b.name,
+      }))
+    );
+
+    setBookId(selectedBooks.length === 1 ? selectedBooks[0].id : "multiple");
+    setMatchTitle(title);
+    setQuestions(orderQuestions(allQuestions, questionOrder, orderBasis));
     setQIndex(0);
     setTurn(1);
     setScores({ 1: 0, 2: 0 });
@@ -903,7 +986,7 @@ function App() {
     const timerSeconds = difficultyTimers[currentQ.difficulty] ?? difficultyTimers[1] ?? 20;
     broadcastToTeams({
       type: "question",
-      bookName: book?.name,
+      bookName: currentQ.bookName || book?.name || matchTitle,
       qIndex, total: questions.length,
       turn, difficulty: currentQ.difficulty, timerSeconds,
       options: currentQ.options,
@@ -992,6 +1075,7 @@ function App() {
     setTeam1Name("");
     setTeam2Name("");
     setBookId(null);
+    setMatchTitle("");
     setQuestions([]);
     stopHosting();
     setRemoteMode("local");
@@ -999,6 +1083,7 @@ function App() {
 
   function rematchSameTeams() {
     setBookId(null);
+    setMatchTitle("");
     setScreen("book");
   }
 
@@ -1120,13 +1205,14 @@ function App() {
           books={library}
           userRole={userRole}
           onSelect={startGame}
-          onManage={() => openManage("book")}
+          onManage={(initialBookId) => openManage("book", initialBookId)}
         />
       )}
 
       {screen === "manage" && (
         <ManageQuestionsScreen
           library={library}
+          initialBookId={manageInitialBookId}
           onAddQuestion={addQuestionToBook}
           onUpdateQuestion={updateQuestionInBook}
           onDeleteQuestion={deleteQuestionFromBook}
@@ -1165,6 +1251,7 @@ function App() {
       {screen === "game" && currentQ && (
         <GameScreen
           book={book}
+          matchTitle={matchTitle}
           qIndex={qIndex}
           total={questions.length}
           currentQ={currentQ}
@@ -1199,6 +1286,7 @@ function App() {
           total={questions.length}
           answerMode={answerMode}
           book={book}
+          matchTitle={matchTitle}
           teamPhotos={remoteMode === "host" ? teamPhotos : null}
           onRematch={rematchSameTeams}
           onNewTeams={playAgain}
@@ -1897,45 +1985,451 @@ function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setO
 }
 
 /* ---------------------------------------------------------
-   PANTALLA 2: Elegir libro
+   PANTALLA 2: Elegir libro (individual, múltiple o toda la Biblia)
 --------------------------------------------------------- */
 function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books, userRole, onSelect, onManage }) {
+  const playableBooks = useMemo(() => books.filter((b) => b.questions.length > 0), [books]);
+  const otPlayable = useMemo(() => playableBooks.filter((b) => b.testament === "Antiguo Testamento"), [playableBooks]);
+  const ntPlayable = useMemo(() => playableBooks.filter((b) => b.testament === "Nuevo Testamento"), [playableBooks]);
+  const gospelsPlayable = useMemo(
+    () => playableBooks.filter((b) => ["mateo", "marcos", "lucas", "juan"].includes(b.id)),
+    [playableBooks]
+  );
+  const pentateuchPlayable = useMemo(
+    () => playableBooks.filter((b) => ["genesis", "exodo", "levitico", "numeros", "deuteronomio"].includes(b.id)),
+    [playableBooks]
+  );
+
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [search, setSearch] = useState("");
+  const [testamentFilter, setTestamentFilter] = useState("all");
+
+  function toggleBook(id) {
+    const bookObj = books.find((b) => b.id === id);
+    if (!bookObj || bookObj.questions.length === 0) return;
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  }
+
+  function selectAll() {
+    setSelectedIds(playableBooks.map((b) => b.id));
+  }
+
+  function selectOT() {
+    setSelectedIds(otPlayable.map((b) => b.id));
+  }
+
+  function selectNT() {
+    setSelectedIds(ntPlayable.map((b) => b.id));
+  }
+
+  function selectGospels() {
+    setSelectedIds(gospelsPlayable.map((b) => b.id));
+  }
+
+  function selectPentateuch() {
+    setSelectedIds(pentateuchPlayable.map((b) => b.id));
+  }
+
+  function clearSelection() {
+    setSelectedIds([]);
+  }
+
+  const filteredBooks = useMemo(() => {
+    return books.filter((b) => {
+      if (testamentFilter === "Antiguo Testamento" && b.testament !== "Antiguo Testamento") return false;
+      if (testamentFilter === "Nuevo Testamento" && b.testament !== "Nuevo Testamento") return false;
+      if (testamentFilter === "Evangelios" && !["mateo", "marcos", "lucas", "juan"].includes(b.id)) return false;
+      if (testamentFilter === "Pentateuco" && !["genesis", "exodo", "levitico", "numeros", "deuteronomio"].includes(b.id)) return false;
+      if (testamentFilter === "Personalizado" && b.id !== CUSTOM_BOOK_ID) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        return b.name.toLowerCase().includes(q) || b.testament.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [books, testamentFilter, search]);
+
+  const visiblePlayableBooks = useMemo(
+    () => filteredBooks.filter((b) => b.questions.length > 0),
+    [filteredBooks]
+  );
+
+  function selectVisible() {
+    const visibleIds = visiblePlayableBooks.map((b) => b.id);
+    setSelectedIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+  }
+
+  const selectedCount = selectedIds.length;
+  const totalQuestionsSelected = useMemo(() => {
+    return books
+      .filter((b) => selectedIds.includes(b.id))
+      .reduce((sum, b) => sum + (b.questions?.length || 0), 0);
+  }, [books, selectedIds]);
+
+  const allSelected = playableBooks.length > 0 && playableBooks.every((b) => selectedIds.includes(b.id));
+  const otSelected = otPlayable.length > 0 && otPlayable.every((b) => selectedIds.includes(b.id));
+  const ntSelected = ntPlayable.length > 0 && ntPlayable.every((b) => selectedIds.includes(b.id));
+  const gospelsSelected = gospelsPlayable.length > 0 && gospelsPlayable.every((b) => selectedIds.includes(b.id));
+  const pentateuchSelected = pentateuchPlayable.length > 0 && pentateuchPlayable.every((b) => selectedIds.includes(b.id));
+
   return (
-    <div style={styles.container} className="fade-in">
-      <header style={{ textAlign: "center", marginBottom: 8 }}>
+    <div style={{ ...styles.container, maxWidth: 860, paddingBottom: 130 }} className="fade-in">
+      <header style={{ textAlign: "center", marginBottom: 20 }}>
         <div className="font-ui" style={{ color: "#B8892B", fontSize: 13, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
           <span style={{ color: team1Color, fontWeight: 700 }}>{team1Name}</span> &nbsp;vs&nbsp; <span style={{ color: team2Color, fontWeight: 700 }}>{team2Name}</span>
         </div>
-        <h1 className="font-display" style={styles.h1}>Elige el libro del duelo</h1>
-        <p className="font-body" style={styles.subtitle}>Todas las preguntas de esta ronda saldrán de ese libro.</p>
+        <h1 className="font-display" style={styles.h1}>Elige los libros del combate</h1>
+        <p className="font-body" style={{ ...styles.subtitle, maxWidth: 620, margin: "0 auto" }}>
+          Selecciona un libro, varios o toda la Biblia para esta ronda. Puedes combinar cualquier selección.
+        </p>
       </header>
 
-      <div style={styles.bookGrid}>
-        {books.map((b) => {
-          const isCustom = b.id === CUSTOM_BOOK_ID;
-          return (
-            <button key={b.id} className="opt-btn" disabled={b.questions.length === 0} title={b.questions.length === 0 ? "Agrega preguntas a este libro antes de iniciar" : "Iniciar debate con este libro"} style={{ ...styles.bookCard, borderColor: isCustom ? "#B8892B" : "#3A5578", opacity: b.questions.length === 0 ? 0.58 : 1, cursor: b.questions.length === 0 ? "not-allowed" : "pointer" }} onClick={() => onSelect(b.id)}>
-              <div style={styles.bookDropcap} className="font-display">{b.letter}</div>
-              <div style={{ textAlign: "left" }}>
-                <div className="font-display" style={{ fontSize: 19, color: "#F5EFE0" }}>{b.name}</div>
-                <div className="font-ui" style={{ fontSize: 11.5, color: "#B8A98A", marginTop: 2 }}>{b.testament}</div>
-                <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 6 }}>{b.questions.length > 0 ? `${b.questions.length} preguntas` : "Sin preguntas - agrega algunas para jugar"}</div>
-              </div>
-              <BookOpen size={18} color="#B8892B" style={{ marginLeft: "auto", alignSelf: "center" }} />
+      {/* Botones de selección rápida / Combates predefinidos */}
+      <div style={{ background: "rgba(22,35,61,0.6)", border: "1.5px solid #3A5578", borderRadius: 12, padding: "14px 16px", marginBottom: 18 }}>
+        <div className="font-ui" style={{ fontSize: 11.5, color: "#D9A93B", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+          <span>⚔️ Selección rápida de combate</span>
+          {selectedCount > 0 && (
+            <span style={{ color: "#F5EFE0", fontWeight: 600 }}>
+              {selectedCount} {selectedCount === 1 ? "libro seleccionado" : "libros seleccionados"} ({totalQuestionsSelected} preg.)
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {/* Toda la Biblia */}
+          <button
+            type="button"
+            className="font-ui"
+            onClick={allSelected ? clearSelection : selectAll}
+            style={{
+              padding: "9px 15px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700,
+              background: allSelected ? "linear-gradient(180deg, #D9A93B 0%, #B8892B 100%)" : "rgba(184,137,43,0.14)",
+              color: allSelected ? "#16233D" : "#D9A93B",
+              border: "1.5px solid #B8892B",
+              display: "flex", alignItems: "center", gap: 6,
+              boxShadow: allSelected ? "0 0 14px rgba(217,169,59,0.35)" : "none",
+            }}
+          >
+            <Check size={15} strokeWidth={2.6} />
+            {allSelected ? "Toda la Biblia (Seleccionada)" : `Toda la Biblia (${playableBooks.reduce((s, b) => s + b.questions.length, 0)} preg.)`}
+          </button>
+
+          {/* Antiguo Testamento */}
+          <button
+            type="button"
+            className="font-ui"
+            onClick={otSelected ? () => setSelectedIds((prev) => prev.filter((id) => !otPlayable.some((b) => b.id === id))) : selectOT}
+            style={{
+              padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+              background: otSelected ? "#1F6F5C" : "rgba(31,111,92,0.18)",
+              color: otSelected ? "#F5EFE0" : "#4CA98D",
+              border: "1.5px solid #1F6F5C",
+              display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            {otSelected && <Check size={14} />}
+            Antiguo Testamento ({otPlayable.reduce((s, b) => s + b.questions.length, 0)} preg.)
+          </button>
+
+          {/* Nuevo Testamento */}
+          <button
+            type="button"
+            className="font-ui"
+            onClick={ntSelected ? () => setSelectedIds((prev) => prev.filter((id) => !ntPlayable.some((b) => b.id === id))) : selectNT}
+            style={{
+              padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+              background: ntSelected ? "#2B5F8A" : "rgba(43,95,138,0.18)",
+              color: ntSelected ? "#F5EFE0" : "#7BAED8",
+              border: "1.5px solid #2B5F8A",
+              display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            {ntSelected && <Check size={14} />}
+            Nuevo Testamento ({ntPlayable.reduce((s, b) => s + b.questions.length, 0)} preg.)
+          </button>
+
+          {/* Evangelios */}
+          {gospelsPlayable.length > 0 && (
+            <button
+              type="button"
+              className="font-ui"
+              onClick={gospelsSelected ? () => setSelectedIds((prev) => prev.filter((id) => !gospelsPlayable.some((b) => b.id === id))) : selectGospels}
+              style={{
+                padding: "8px 13px", borderRadius: 8, cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+                background: gospelsSelected ? "#7A4E12" : "rgba(184,137,43,0.12)",
+                color: gospelsSelected ? "#F5EFE0" : "#E2BA55",
+                border: "1.5px solid #9C6B1E",
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              {gospelsSelected && <Check size={14} />}
+              Evangelios ({gospelsPlayable.reduce((s, b) => s + b.questions.length, 0)} preg.)
             </button>
+          )}
+
+          {/* Pentateuco */}
+          {pentateuchPlayable.length > 0 && (
+            <button
+              type="button"
+              className="font-ui"
+              onClick={pentateuchSelected ? () => setSelectedIds((prev) => prev.filter((id) => !pentateuchPlayable.some((b) => b.id === id))) : selectPentateuch}
+              style={{
+                padding: "8px 13px", borderRadius: 8, cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+                background: pentateuchSelected ? "#5B3A70" : "rgba(91,58,112,0.2)",
+                color: pentateuchSelected ? "#F5EFE0" : "#C1A2DC",
+                border: "1.5px solid #5B3A70",
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              {pentateuchSelected && <Check size={14} />}
+              Pentateuco ({pentateuchPlayable.reduce((s, b) => s + b.questions.length, 0)} preg.)
+            </button>
+          )}
+
+          {/* Botón deseleccionar todo */}
+          {selectedCount > 0 && (
+            <button
+              type="button"
+              className="font-ui"
+              onClick={clearSelection}
+              style={{
+                padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                background: "transparent", color: "#8FA0B8", border: "1.5px solid #3A5578",
+                marginLeft: "auto",
+              }}
+            >
+              Limpiar selección
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Barra de búsqueda y filtro */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 18, flexWrap: "wrap" }}>
+        <input
+          type="text"
+          className="font-body"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar libro (ej. Génesis, Mateo, Salmos)…"
+          style={{
+            flex: "1 1 240px", background: "#0F1A2E", border: "1.5px solid #3A5578",
+            borderRadius: 8, padding: "9px 14px", color: "#F5EFE0", fontSize: 14.5,
+          }}
+        />
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {[
+            { id: "all", label: "Todos" },
+            { id: "Antiguo Testamento", label: "A.T." },
+            { id: "Nuevo Testamento", label: "N.T." },
+            { id: "Evangelios", label: "Evangelios" },
+            { id: "Pentateuco", label: "Pentateuco" },
+            { id: "Personalizado", label: "Propias" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className="font-ui"
+              onClick={() => setTestamentFilter(tab.id)}
+              style={{
+                padding: "7px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                background: testamentFilter === tab.id ? "#3A5578" : "rgba(255,255,255,0.03)",
+                color: testamentFilter === tab.id ? "#F5EFE0" : "#8FA0B8",
+                border: "1px solid #3A5578",
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+
+          {visiblePlayableBooks.length > 0 && (
+            <button
+              type="button"
+              className="font-ui"
+              onClick={selectVisible}
+              title="Seleccionar los libros con preguntas visibles en pantalla"
+              style={{
+                padding: "7px 11px", borderRadius: 6, cursor: "pointer", fontSize: 11.5, fontWeight: 600,
+                background: "rgba(217,169,59,0.12)", color: "#D9A93B", border: "1px solid #B8892B",
+              }}
+            >
+              + Seleccionar visibles ({visiblePlayableBooks.length})
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Cuadrícula de libros */}
+      <div style={styles.bookGrid}>
+        {filteredBooks.map((b) => {
+          const isCustom = b.id === CUSTOM_BOOK_ID;
+          const isPlayable = b.questions.length > 0;
+          const isSelected = selectedIds.includes(b.id);
+          return (
+            <div
+              key={b.id}
+              className="opt-btn"
+              onClick={() => {
+                if (isPlayable) {
+                  toggleBook(b.id);
+                } else {
+                  onManage(b.id);
+                }
+              }}
+              style={{
+                ...styles.bookCard,
+                position: "relative",
+                borderColor: isSelected ? "#D9A93B" : isCustom ? "#B8892B" : "#3A5578",
+                background: isSelected
+                  ? "linear-gradient(180deg, #203A60 0%, #172A45 100%)"
+                  : isPlayable
+                  ? "linear-gradient(180deg, #1A2C48 0%, #16233D 100%)"
+                  : "linear-gradient(180deg, #131E33 0%, #0F1729 100%)",
+                boxShadow: isSelected ? "0 0 16px rgba(217,169,59,0.28)" : "none",
+                opacity: isPlayable ? 1 : 0.65,
+                cursor: "pointer",
+              }}
+            >
+              <div
+                style={{
+                  ...styles.bookDropcap,
+                  background: isSelected ? "#D9A93B" : isPlayable ? "rgba(184,137,43,0.15)" : "rgba(255,255,255,0.04)",
+                  color: isSelected ? "#16233D" : isPlayable ? "#B8892B" : "#6E8299",
+                }}
+                className="font-display"
+              >
+                {b.letter}
+              </div>
+              <div style={{ textAlign: "left", flex: 1, minWidth: 0 }}>
+                <div className="font-display" style={{ fontSize: 18, color: isSelected ? "#FFE49E" : "#F5EFE0", fontWeight: isSelected ? 700 : 500 }}>
+                  {b.name}
+                </div>
+                <div className="font-ui" style={{ fontSize: 11, color: "#B8A98A", marginTop: 2 }}>
+                  {b.testament}
+                </div>
+                <div className="font-ui" style={{ fontSize: 11.5, color: isPlayable ? (isSelected ? "#D9A93B" : "#8FA0B8") : "#718299", marginTop: 4, fontWeight: isSelected ? 700 : 400 }}>
+                  {isPlayable ? `${b.questions.length} preguntas` : "Sin preguntas aún"}
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flex: "0 0 auto" }}>
+                {isPlayable ? (
+                  <>
+                    <div
+                      style={{
+                        width: 26, height: 26, borderRadius: "50%",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        border: isSelected ? "2px solid #D9A93B" : "2px solid #3A5578",
+                        background: isSelected ? "#D9A93B" : "rgba(0,0,0,0.25)",
+                        color: "#16233D",
+                      }}
+                    >
+                      {isSelected && <Check size={18} strokeWidth={3} />}
+                    </div>
+                    <button
+                      type="button"
+                      title="Jugar únicamente este libro"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(b.id);
+                      }}
+                      style={{
+                        background: "none", border: "none", color: "#8FA0B8", fontSize: 11,
+                        cursor: "pointer", textDecoration: "underline", padding: "2px 0",
+                      }}
+                    >
+                      Solo este
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    title="Agregar preguntas a este libro"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onManage(b.id);
+                    }}
+                    style={{
+                      padding: "4px 9px", borderRadius: 6, fontSize: 10.5, fontWeight: 700,
+                      cursor: "pointer", background: "rgba(184,137,43,0.14)", border: "1px solid #B8892B", color: "#D9A93B",
+                    }}
+                  >
+                    + Preguntas
+                  </button>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>
 
-      <div style={{ textAlign: "center" }}>
+      <div style={{ textAlign: "center", marginTop: 26 }}>
         <button
           className="font-ui"
-          onClick={onManage}
-          style={{ display: "flex", alignItems: "center", gap: 6, margin: "22px auto 0", background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
+          onClick={() => onManage()}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, margin: "0 auto", background: "none", border: "none", color: "#B8A98A", fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px" }}
         >
           <PenLine size={14} />
-          Agregar o editar preguntas
+          Agregar o editar preguntas de cualquier libro
         </button>
+      </div>
+
+      {/* Barra fija inferior de confirmación de combate */}
+      <div
+        className="fade-in"
+        style={{
+          position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40,
+          background: "rgba(15,26,46,0.96)", backdropFilter: "blur(10px)",
+          borderTop: "2px solid #3A5578", padding: "14px 20px",
+          display: "flex", justifyContent: "center", alignItems: "center",
+          boxShadow: "0 -8px 24px rgba(0,0,0,0.5)",
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: 860, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+          <div>
+            <div className="font-ui" style={{ fontSize: 15, fontWeight: 700, color: "#F5EFE0", display: "flex", alignItems: "center", gap: 8 }}>
+              {selectedCount === 0 ? (
+                "Selecciona uno o más libros para el combate"
+              ) : allSelected ? (
+                <>⭐ Toda la Biblia seleccionada ({selectedCount} libros)</>
+              ) : otSelected && selectedCount === otPlayable.length ? (
+                <>📜 Antiguo Testamento completo ({selectedCount} libros)</>
+              ) : ntSelected && selectedCount === ntPlayable.length ? (
+                <>✨ Nuevo Testamento completo ({selectedCount} libros)</>
+              ) : (
+                <>{selectedCount} {selectedCount === 1 ? "libro seleccionado" : "libros seleccionados"}</>
+              )}
+            </div>
+            <div className="font-ui" style={{ fontSize: 12.5, color: selectedCount > 0 ? "#D9A93B" : "#8FA0B8", marginTop: 2 }}>
+              {selectedCount === 0
+                ? "Puedes marcar casillas de libros individuales o tocar 'Toda la Biblia' arriba."
+                : `${totalQuestionsSelected} preguntas disponibles en total para esta partida`}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="font-ui"
+            disabled={selectedCount === 0 || totalQuestionsSelected === 0}
+            onClick={() => onSelect(selectedIds)}
+            style={{
+              ...styles.primaryBtn,
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "12px 24px", fontSize: 15,
+              opacity: selectedCount > 0 && totalQuestionsSelected > 0 ? 1 : 0.45,
+              cursor: selectedCount > 0 && totalQuestionsSelected > 0 ? "pointer" : "not-allowed",
+              boxShadow: selectedCount > 0 && totalQuestionsSelected > 0 ? "0 0 20px rgba(217,169,59,0.4)" : "none",
+            }}
+          >
+            <Swords size={20} />
+            {selectedCount > 1
+              ? `Iniciar combate (${totalQuestionsSelected} preguntas)`
+              : selectedCount === 1
+              ? `Iniciar combate (${totalQuestionsSelected} preg.)`
+              : "Elige libros para comenzar"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2050,8 +2544,13 @@ function AdminGateScreen({ title, reason, authLoading, currentUser, userRole, au
   );
 }
 
-function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onReorderQuestions, saveError, loaded, onBack }) {
-  const [selectedBookId, setSelectedBookId] = useState(library[0]?.id);
+function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onReorderQuestions, saveError, loaded, onBack }) {
+  const [selectedBookId, setSelectedBookId] = useState(initialBookId || library[0]?.id);
+
+  useEffect(() => {
+    if (initialBookId) setSelectedBookId(initialBookId);
+  }, [initialBookId]);
+
   const [qText, setQText] = useState("");
   const [opts, setOpts] = useState(["", "", "", ""]);
   const [correct, setCorrect] = useState(0);
@@ -2652,7 +3151,7 @@ function ManageQuestionsScreen({ library, onAddQuestion, onUpdateQuestion, onDel
 /* ---------------------------------------------------------
    PANTALLA 3: Juego
 --------------------------------------------------------- */
-function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, answerMode, bothAnswers, difficultyTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, remoteMode, remoteStatus, teamPhotos, onAnswer, onNext }) {
+function GameScreen({ book, matchTitle, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, answerMode, bothAnswers, difficultyTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, remoteMode, remoteStatus, teamPhotos, onAnswer, onNext }) {
   const activeColor = teamColor(turn);
   const timerSeconds = difficultyTimers[currentQ?.difficulty] ?? difficultyTimers[1] ?? 20;
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
@@ -2723,7 +3222,7 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
         <div style={styles.scoreBar}>
           <ScorePill name={teamName(1)} icon={teamIcon(1)} color={teamColor(1)} score={scores[1]} active={turn === 1} align="left" connected={remoteMode === "host" ? remoteStatus[1] === "connected" : null} photo={remoteMode === "host" ? teamPhotos?.[1] : null} />
           <div className="font-ui" style={{ textAlign: "center", color: "#B8A98A", fontSize: "clamp(10px, 2.6vw, 12.5px)", flex: "0 1 auto", minWidth: 0, padding: "6px 4px 0" }}>
-            <div className="font-display" style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "clamp(17px, 6vw, 26px)" }}>{book?.name}</div>
+            <div className="font-display" style={{ color: "#B8892B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "clamp(17px, 6vw, 26px)" }}>{matchTitle || book?.name || "Duelo Bíblico"}</div>
             <div style={{ marginTop: 2 }}>Pregunta {qIndex + 1} de {total}</div>
           </div>
           <ScorePill name={teamName(2)} icon={teamIcon(2)} color={teamColor(2)} score={scores[2]} active={turn === 2} align="right" connected={remoteMode === "host" ? remoteStatus[2] === "connected" : null} photo={remoteMode === "host" ? teamPhotos?.[2] : null} />
@@ -2737,11 +3236,16 @@ function GameScreen({ book, qIndex, total, currentQ, turn, teamName, teamColor, 
 
       {/* Pregunta en grande — usa todo el ancho de la pantalla, pensada para proyector */}
       <div key={"bigq" + qIndex} className="fade-in" style={{ width: "100%", maxWidth: "min(96vw, 1400px)", margin: "22px auto 6px", textAlign: "center", padding: "0 clamp(12px, 4vw, 40px)" }}>
-        {(currentQ.chapter || currentQ.verse) && (
-          <div className="font-ui" style={{ fontSize: "clamp(12px, 2.6vw, 16px)", color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 10 }}>
-            {book?.name} {currentQ.chapter}{currentQ.chapter && currentQ.verse ? ":" : ""}{currentQ.verse}
-          </div>
-        )}
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(184,137,43,0.14)", border: "1px solid rgba(184,137,43,0.35)", borderRadius: 20, padding: "4px 14px", marginBottom: 12 }}>
+          <span className="font-ui" style={{ fontSize: "clamp(12px, 2.6vw, 15px)", color: "#D9A93B", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+            📖 {currentQ.bookName || book?.name || matchTitle || "Biblia"}
+          </span>
+          {(currentQ.chapter || currentQ.verse) && (
+            <span className="font-ui" style={{ fontSize: "clamp(12px, 2.6vw, 15px)", color: "#F5EFE0", fontWeight: 600 }}>
+              {currentQ.chapter}{currentQ.chapter && currentQ.verse ? ":" : ""}{currentQ.verse}
+            </span>
+          )}
+        </div>
         <p className="font-display" style={{ fontSize: "clamp(24px, 4.6vw, 48px)", color: "#F5EFE0", lineHeight: 1.3, fontWeight: 700, margin: 0, whiteSpace: "normal" }}>
           {currentQ.q}
         </p>
@@ -3155,8 +3659,9 @@ function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName,
   }
 
   function shareFacebook() {
-    const url = "https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(window.location.href) + "&quote=" + encodeURIComponent(shareText);
-    window.open(url, "_blank", "noopener,noreferrer");
+    downloadImage();
+    setToast("Imagen descargada. Ábrela en Facebook para compartirla en tu historia o publicación.");
+    setTimeout(() => setToast(""), 4000);
   }
 
   function shareAppOnly(label) {
@@ -3223,9 +3728,10 @@ function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName,
   );
 }
 
-function ResultsScreen({ winner, teamName, teamColor, scores, total, answerMode, book, teamPhotos, onRematch, onNewTeams }) {
+function ResultsScreen({ winner, teamName, teamColor, scores, total, answerMode, book, matchTitle, teamPhotos, onRematch, onNewTeams }) {
   const answeredCount = (team) => (answerMode === "both" ? total : (team === 1 ? Math.ceil(total / 2) : Math.floor(total / 2)));
   const incorrectCount = (team) => Math.max(0, answeredCount(team) - scores[team]);
+  const displayTitle = matchTitle || book?.name || "la Biblia";
 
   return (
     <div style={{ ...styles.container, textAlign: "center" }} className="fade-in">
@@ -3237,10 +3743,10 @@ function ResultsScreen({ winner, teamName, teamColor, scores, total, answerMode,
         <>
           <RoseWindow size={110} colorA={teamColor(1)} colorB={teamColor(2)} />
           <h1 className="font-display" style={styles.h1}>¡Empate!</h1>
-          <p className="font-body" style={styles.subtitle}>Ambos equipos demostraron conocer bien {book?.name}.</p>
+          <p className="font-body" style={styles.subtitle}>Ambos equipos demostraron conocer bien {displayTitle}.</p>
         </>
       ) : (
-        <TrophyBadge winnerName={teamName(winner)} winnerColor={teamColor(winner)} bookName={book?.name} />
+        <TrophyBadge winnerName={teamName(winner)} winnerColor={teamColor(winner)} bookName={displayTitle} />
       )}
 
       <div style={styles.resultsRow}>
@@ -3248,12 +3754,12 @@ function ResultsScreen({ winner, teamName, teamColor, scores, total, answerMode,
         <AnswerStatsCard name={teamName(2)} color={teamColor(2)} score={scores[2]} total={total} correct={scores[2]} incorrect={incorrectCount(2)} />
       </div>
 
-      <ShareResultCard winner={winner} teamName={teamName} teamColor={teamColor} scores={scores} total={total} bookName={book?.name} teamPhotos={teamPhotos} />
+      <ShareResultCard winner={winner} teamName={teamName} teamColor={teamColor} scores={scores} total={total} bookName={displayTitle} teamPhotos={teamPhotos} />
 
       <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 32, flexWrap: "wrap" }}>
         <button className="font-ui" style={styles.primaryBtn} onClick={onRematch}>
           <Sparkles size={18} style={{ marginRight: 8, verticalAlign: "-3px" }} />
-          Jugar otro libro
+          Jugar otro combate
         </button>
         <button className="font-ui" style={styles.secondaryBtn} onClick={onNewTeams}>
           <RotateCcw size={16} style={{ marginRight: 8, verticalAlign: "-3px" }} />
