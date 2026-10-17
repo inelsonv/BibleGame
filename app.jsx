@@ -17,6 +17,7 @@ const Crown = (p) => <Icon {...p}><path d="M3 8l4 4 5-7 5 7 4-4-2 10H5L3 8Z" /><
 const Check = (p) => <Icon {...p}><path d="M4 12l5 5L20 6" /></Icon>;
 const X = (p) => <Icon {...p}><path d="M5 5l14 14" /><path d="M19 5 5 19" /></Icon>;
 const RotateCcw = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></Icon>;
+const Shuffle = (p) => <Icon {...p}><path d="M16 3h5v5" /><path d="M4 20L21 3" /><path d="M21 16v5h-5" /><path d="M15 15l6 6" /><path d="M4 4l5 5" /></Icon>;
 const ChevronRight = (p) => <Icon {...p}><path d="M9 5l7 7-7 7" /></Icon>;
 const Sparkles = (p) => <Icon {...p}><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z" /><path d="M5 17l.8 2.2L8 20l-2.2.8L5 23l-.8-2.2L2 20l2.2-.8L5 17Z" /></Icon>;
 const Timer = (p) => <Icon {...p}><circle cx="12" cy="13" r="8" /><path d="M12 9v4l3 2" /><path d="M9 2h6" /></Icon>;
@@ -574,6 +575,7 @@ function App() {
   const [verseDisplaySeconds, setVerseDisplaySeconds] = useState(5);
   const [bookId, setBookId] = useState(null);
   const [matchTitle, setMatchTitle] = useState("");
+  const [lastSelectedBookIds, setLastSelectedBookIds] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [qIndex, setQIndex] = useState(0);
   const [turn, setTurn] = useState(1);
@@ -969,6 +971,7 @@ function App() {
 
     setBookId(selectedBooks.length === 1 ? selectedBooks[0].id : "multiple");
     setMatchTitle(title);
+    setLastSelectedBookIds(selectedIds);
     setQuestions(orderQuestions(allQuestions, questionOrder, orderBasis));
     setQIndex(0);
     setTurn(1);
@@ -977,6 +980,14 @@ function App() {
     setBothAnswers({ 1: null, 2: null });
     setShowFeedback(false);
     setScreen("game");
+  }
+
+  function restartLastMatch() {
+    if (lastSelectedBookIds.length > 0) {
+      startGame(lastSelectedBookIds);
+    } else {
+      setScreen("book");
+    }
   }
 
   // Transmite el estado de la pregunta actual a ambos celulares conectados
@@ -1204,6 +1215,10 @@ function App() {
           team1Color={team1Color} team2Color={team2Color}
           books={library}
           userRole={userRole}
+          questionOrder={questionOrder}
+          setQuestionOrder={setQuestionOrder}
+          orderBasis={orderBasis}
+          setOrderBasis={setOrderBasis}
           onSelect={startGame}
           onManage={(initialBookId) => openManage("book", initialBookId)}
         />
@@ -1288,6 +1303,8 @@ function App() {
           book={book}
           matchTitle={matchTitle}
           teamPhotos={remoteMode === "host" ? teamPhotos : null}
+          hasLastMatch={lastSelectedBookIds.length > 0}
+          onInstantRematch={restartLastMatch}
           onRematch={rematchSameTeams}
           onNewTeams={playAgain}
         />
@@ -1987,7 +2004,12 @@ function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setO
 /* ---------------------------------------------------------
    PANTALLA 2: Elegir libro (individual, múltiple o toda la Biblia)
 --------------------------------------------------------- */
-function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books, userRole, onSelect, onManage }) {
+function BookSelectScreen({
+  team1Name, team2Name, team1Color, team2Color,
+  books, userRole, questionOrder = "random", setQuestionOrder,
+  orderBasis = "mixed", setOrderBasis,
+  onSelect, onManage,
+}) {
   const playableBooks = useMemo(() => books.filter((b) => b.questions.length > 0), [books]);
   const otPlayable = useMemo(() => playableBooks.filter((b) => b.testament === "Antiguo Testamento"), [playableBooks]);
   const ntPlayable = useMemo(() => playableBooks.filter((b) => b.testament === "Nuevo Testamento"), [playableBooks]);
@@ -2204,6 +2226,87 @@ function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books,
             </button>
           )}
         </div>
+
+        {/* Modo de orden de preguntas (Aleatorio / Numérico / Alternada) */}
+        <div style={{
+          marginTop: 14,
+          paddingTop: 12,
+          borderTop: "1px solid rgba(58,85,120,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 10,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="font-ui" style={{ fontSize: 12.5, fontWeight: 700, color: "#D9A93B", display: "flex", alignItems: "center", gap: 6 }}>
+              <Shuffle size={14} /> Modo de preguntas:
+            </span>
+            <span className="font-ui" style={{ fontSize: 12, color: "#F5EFE0", fontWeight: 600 }}>
+              {questionOrder === "random"
+                ? "🎲 Aleatorio (Al azar)"
+                : questionOrder === "numeric"
+                ? "🔢 Orden numérico"
+                : "🔀 Alternada"}
+            </span>
+          </div>
+
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            {[
+              { id: "random", icon: "🎲", label: "Aleatorio (Al azar)", hint: "Mezcla aleatoriamente todas las preguntas de los libros seleccionados" },
+              { id: "numeric", icon: "🔢", label: "Numérico", hint: "Ordenadas correlativamente por número de pregunta" },
+              { id: "alternating", icon: "🔀", label: "Alternada", hint: "Alterna primera y última" },
+            ].map((m) => {
+              const active = questionOrder === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  className="font-ui"
+                  onClick={() => setQuestionOrder && setQuestionOrder(m.id)}
+                  title={m.hint}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: active ? 700 : 500,
+                    background: active ? "linear-gradient(180deg, #D9A93B 0%, #B8892B 100%)" : "rgba(255,255,255,0.04)",
+                    color: active ? "#16233D" : "#C4D4E8",
+                    border: active ? "1.5px solid #D9A93B" : "1px solid #3A5578",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    boxShadow: active ? "0 0 10px rgba(217,169,59,0.3)" : "none",
+                  }}
+                >
+                  <span>{m.icon}</span> {m.label}
+                </button>
+              );
+            })}
+
+            {setOrderBasis && (
+              <button
+                type="button"
+                className="font-ui"
+                onClick={() => setOrderBasis((b) => (b === "difficulty" ? "mixed" : "difficulty"))}
+                title={orderBasis === "difficulty" ? "Primero preguntas fáciles, luego medias y difíciles" : "Todas las dificultades mezcladas"}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  background: orderBasis === "difficulty" ? "rgba(76,169,141,0.2)" : "rgba(255,255,255,0.03)",
+                  color: orderBasis === "difficulty" ? "#4CA98D" : "#8FA0B8",
+                  border: orderBasis === "difficulty" ? "1px solid #1F6F5C" : "1px solid #3A5578",
+                }}
+              >
+                {orderBasis === "difficulty" ? "⚡ Fácil → Difícil" : "⚡ Dificultad mezclada"}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Barra de búsqueda y filtro */}
@@ -2401,10 +2504,28 @@ function BookSelectScreen({ team1Name, team2Name, team1Color, team2Color, books,
                 <>{selectedCount} {selectedCount === 1 ? "libro seleccionado" : "libros seleccionados"}</>
               )}
             </div>
-            <div className="font-ui" style={{ fontSize: 12.5, color: selectedCount > 0 ? "#D9A93B" : "#8FA0B8", marginTop: 2 }}>
-              {selectedCount === 0
-                ? "Puedes marcar casillas de libros individuales o tocar 'Toda la Biblia' arriba."
-                : `${totalQuestionsSelected} preguntas disponibles en total para esta partida`}
+            <div className="font-ui" style={{ fontSize: 12.5, color: selectedCount > 0 ? "#D9A93B" : "#8FA0B8", marginTop: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span>
+                {selectedCount === 0
+                  ? "Puedes marcar casillas de libros individuales o tocar 'Toda la Biblia' arriba."
+                  : `${totalQuestionsSelected} preguntas disponibles en total`}
+              </span>
+              {selectedCount > 0 && (
+                <span style={{
+                  fontSize: 11,
+                  background: "rgba(184,137,43,0.18)",
+                  border: "1px solid rgba(184,137,43,0.45)",
+                  padding: "2px 8px",
+                  borderRadius: 10,
+                  color: "#FFE49E",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}>
+                  {questionOrder === "random" ? "🎲 Modo Aleatorio activo" : questionOrder === "numeric" ? "🔢 Orden Numérico" : "🔀 Modo Alternado"}
+                </span>
+              )}
             </div>
           </div>
 
@@ -3728,7 +3849,11 @@ function ShareResultCard({ winner, teamName, teamColor, scores, total, bookName,
   );
 }
 
-function ResultsScreen({ winner, teamName, teamColor, scores, total, answerMode, book, matchTitle, teamPhotos, onRematch, onNewTeams }) {
+function ResultsScreen({
+  winner, teamName, teamColor, scores, total,
+  answerMode, book, matchTitle, teamPhotos,
+  hasLastMatch, onInstantRematch, onRematch, onNewTeams,
+}) {
   const answeredCount = (team) => (answerMode === "both" ? total : (team === 1 ? Math.ceil(total / 2) : Math.floor(total / 2)));
   const incorrectCount = (team) => Math.max(0, answeredCount(team) - scores[team]);
   const displayTitle = matchTitle || book?.name || "la Biblia";
@@ -3757,12 +3882,52 @@ function ResultsScreen({ winner, teamName, teamColor, scores, total, answerMode,
       <ShareResultCard winner={winner} teamName={teamName} teamColor={teamColor} scores={scores} total={total} bookName={displayTitle} teamPhotos={teamPhotos} />
 
       <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 32, flexWrap: "wrap" }}>
-        <button className="font-ui" style={styles.primaryBtn} onClick={onRematch}>
-          <Sparkles size={18} style={{ marginRight: 8, verticalAlign: "-3px" }} />
-          Jugar otro combate
+        {hasLastMatch && onInstantRematch && (
+          <button
+            type="button"
+            className="font-ui"
+            style={{
+              ...styles.primaryBtn,
+              background: "linear-gradient(180deg, #D9A93B 0%, #B8892B 100%)",
+              color: "#16233D",
+              fontWeight: 700,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              boxShadow: "0 0 16px rgba(217,169,59,0.35)",
+            }}
+            onClick={onInstantRematch}
+          >
+            <Sparkles size={18} />
+            Revancha directa (mismos libros, nuevo orden aleatorio)
+          </button>
+        )}
+        <button
+          type="button"
+          className="font-ui"
+          style={{
+            ...(hasLastMatch ? styles.secondaryBtn : styles.primaryBtn),
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+          onClick={onRematch}
+        >
+          <Swords size={18} />
+          Elegir otros libros de combate
         </button>
-        <button className="font-ui" style={styles.secondaryBtn} onClick={onNewTeams}>
-          <RotateCcw size={16} style={{ marginRight: 8, verticalAlign: "-3px" }} />
+        <button
+          type="button"
+          className="font-ui"
+          style={{
+            ...styles.secondaryBtn,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+          onClick={onNewTeams}
+        >
+          <RotateCcw size={16} />
           Nuevos equipos
         </button>
       </div>
