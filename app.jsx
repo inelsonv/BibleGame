@@ -422,6 +422,17 @@ function orderQuestions(questions, mode, basis) {
 }
 
 // Formatea segundos como "45s", "2m" o "2m 30s" para tiempos largos (hasta 5 min)
+// Tiempo propio de una pregunta (en segundos, opcional). Si no tiene, se usa el de su dificultad.
+function parseTimer(value) {
+  const n = parseInt(String(value).trim(), 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(600, Math.max(5, n));
+}
+function questionTimerSeconds(q, difficultyTimers) {
+  if (q && Number.isFinite(q.timer) && q.timer > 0) return Math.round(q.timer);
+  return difficultyTimers[q?.difficulty] ?? difficultyTimers[1] ?? 20;
+}
+
 function formatDuration(seconds) {
   if (seconds < 60) return `${seconds}s`;
   const m = Math.floor(seconds / 60);
@@ -863,7 +874,7 @@ function App() {
   // cada vez que algo relevante cambia (nueva pregunta, turno, respuesta...).
   useEffect(() => {
     if (remoteMode !== "host" || screen !== "game" || !currentQ) return;
-    const timerSeconds = difficultyTimers[currentQ.difficulty] ?? difficultyTimers[1] ?? 20;
+    const timerSeconds = questionTimerSeconds(currentQ, difficultyTimers);
     broadcastToTeams({
       type: "question",
       bookName: currentQ.bookName || book?.name || matchTitle,
@@ -2337,6 +2348,7 @@ function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdate
   const [verse, setVerse] = useState("");
   const [verseText, setVerseText] = useState("");
   const [difficulty, setDifficulty] = useState(1);
+  const [timer, setTimer] = useState("");
   const [formError, setFormError] = useState("");
   const [editState, setEditState] = useState(null); // { index, qText, opts, correct, chapter, verse, verseText, difficulty }
   const [dragIndex, setDragIndex] = useState(null);
@@ -2404,6 +2416,7 @@ function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdate
     setVerse("");
     setVerseText("");
     setDifficulty(1);
+    setTimer("");
     setFormError("");
     setVerseLookup({ status: "idle", message: "" });
   }
@@ -2421,12 +2434,13 @@ function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdate
       verse: verse.trim(),
       verseText: verseText.trim(),
       difficulty,
+      ...(parseTimer(timer) ? { timer: parseTimer(timer) } : {}),
     });
     resetForm();
   }
 
   function startEdit(i, q) {
-    setEditState({ index: i, id: q.id, qText: q.q, opts: [...q.options], correct: q.correct, chapter: q.chapter || "", verse: q.verse || "", verseText: q.verseText || "", difficulty: q.difficulty || 1 });
+    setEditState({ index: i, id: q.id, qText: q.q, opts: [...q.options], correct: q.correct, chapter: q.chapter || "", verse: q.verse || "", verseText: q.verseText || "", difficulty: q.difficulty || 1, timer: q.timer ? String(q.timer) : "" });
   }
 
   function updateEditOpt(i, val) {
@@ -2455,6 +2469,7 @@ function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdate
       verse: editState.verse.trim(),
       verseText: editState.verseText.trim(),
       difficulty: editState.difficulty,
+      ...(parseTimer(editState.timer) ? { timer: parseTimer(editState.timer) } : {}),
     });
     setEditState(null);
   }
@@ -2653,6 +2668,21 @@ function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdate
           ))}
         </div>
 
+        <label className="font-ui" style={{ fontSize: 12.5, color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 18, display: "block" }}>Tiempo para responder (opcional)</label>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+          <input
+            type="number" inputMode="numeric" min="5" max="600" value={timer}
+            onChange={(e) => setTimer(e.target.value)}
+            placeholder="Según dificultad"
+            aria-label="Tiempo para responder en segundos"
+            style={{ width: 150, background: "#0F1A2E", color: "#F5EFE0", border: "1.5px solid #3A5578", borderRadius: 8, padding: "8px 10px", fontSize: 14 }}
+          />
+          <span className="font-ui" style={{ color: "#B8A98A", fontSize: 13 }}>segundos</span>
+        </div>
+        <div className="font-ui" style={{ fontSize: 11.5, color: "#8FA0B8", marginTop: 6 }}>
+          De 5 a 600 segundos. Si lo dejas vacío se usa el tiempo de la dificultad (Configuración).
+        </div>
+
         {formError && (
           <div className="font-ui" style={{ marginTop: 12, color: "#C0405A", fontSize: 13 }}>{formError}</div>
         )}
@@ -2821,6 +2851,17 @@ function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdate
                         </button>
                       ))}
                     </div>
+                    <label className="font-ui" style={{ fontSize: 11, color: "#B8892B", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 12, display: "block" }}>Tiempo para responder (opcional)</label>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                      <input
+                        type="number" inputMode="numeric" min="5" max="600" value={editState.timer}
+                        onChange={(e) => setEditState((prev) => ({ ...prev, timer: e.target.value }))}
+                        placeholder="Según dificultad"
+                        aria-label="Tiempo para responder en segundos"
+                        style={{ width: 150, background: "#0F1A2E", color: "#F5EFE0", border: "1.5px solid #3A5578", borderRadius: 8, padding: "7px 10px", fontSize: 13.5 }}
+                      />
+                      <span className="font-ui" style={{ color: "#B8A98A", fontSize: 12.5 }}>segundos (5–600, vacío = según dificultad)</span>
+                    </div>
                     <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
                       <button className="font-ui" style={styles.secondaryBtn} onClick={() => setEditState(null)}>Cancelar</button>
                       <button className="font-ui" style={styles.primaryBtn} onClick={saveEdit}>Guardar cambios</button>
@@ -2877,6 +2918,11 @@ function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdate
                       }}>
                         {difficultyInfo(q.difficulty).label}
                       </span>
+                      {q.timer > 0 && (
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10, color: "#B8A98A", border: "1px solid #3A5578" }}>
+                          ⏱ {formatDuration(q.timer)}
+                        </span>
+                      )}
                     </div>
                     <p className="font-body" style={{ color: "#F5EFE0", fontSize: 16, margin: 0 }}>{q.q}</p>
                     {(q.chapter || q.verse) && (
@@ -2934,7 +2980,7 @@ function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdate
 --------------------------------------------------------- */
 function GameScreen({ book, matchTitle, qIndex, total, currentQ, turn, teamName, teamColor, teamIcon, scores, selected, showFeedback, answerMode, bothAnswers, difficultyTimers, feedbackDisplaySeconds, verseDisplaySeconds, narrationEnabled, remoteMode, remoteStatus, teamPhotos, onAnswer, onNext }) {
   const activeColor = teamColor(turn);
-  const timerSeconds = difficultyTimers[currentQ?.difficulty] ?? difficultyTimers[1] ?? 20;
+  const timerSeconds = questionTimerSeconds(currentQ, difficultyTimers);
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
   const [verseVisible, setVerseVisible] = useState(false);
   const [verseSecondsLeft, setVerseSecondsLeft] = useState(verseDisplaySeconds);
