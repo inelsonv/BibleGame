@@ -212,19 +212,16 @@ const FIRESTORE_DOC = "library";
 const USERS_COLLECTION = "users";
 
 let firestoreDb = null;
-let firebaseAuth = null;
 try {
   if (typeof firebase !== "undefined" && FIREBASE_CONFIG.apiKey) {
     if (!firebase.apps || firebase.apps.length === 0) {
       firebase.initializeApp(FIREBASE_CONFIG);
     }
     firestoreDb = firebase.firestore();
-    firebaseAuth = firebase.auth();
   }
 } catch (e) {
   // Firebase no se pudo inicializar (bloqueado, sin internet, etc.): se usará localStorage como respaldo
   firestoreDb = null;
-  firebaseAuth = null;
 }
 
 // Abreviaturas usadas por la fuente de texto bíblico (Reina-Valera, dominio
@@ -588,136 +585,6 @@ function App() {
   const [librarySaveError, setLibrarySaveError] = useState(false);
   const [screenBeforeManage, setScreenBeforeManage] = useState("setup");
   const [isFullscreen, setIsFullscreen] = useState(false);
-
-  // ---- Cuenta de usuario (Google, vía Firebase Authentication o respaldo local) ----
-  const [currentUser, setCurrentUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem("duelo-biblico:local-user");
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  }); // { uid, name, email, photoURL } | null
-  const [userRole, setUserRole] = useState(() => {
-    try {
-      const saved = localStorage.getItem("duelo-biblico:local-user");
-      return saved ? "admin" : null;
-    } catch {
-      return null;
-    }
-  }); // "admin" | "user" | null (null = no ha iniciado sesión)
-  const [authLoading, setAuthLoading] = useState(Boolean(firebaseAuth));
-  const [authError, setAuthError] = useState("");
-
-  useEffect(() => {
-    if (!firebaseAuth) { setAuthLoading(false); return; }
-    const unsubscribe = firebaseAuth.onAuthStateChanged((user) => {
-      if (!user) {
-        try {
-          const saved = localStorage.getItem("duelo-biblico:local-user");
-          if (saved) {
-            setCurrentUser(JSON.parse(saved));
-            setUserRole("admin");
-            setAuthLoading(false);
-            return;
-          }
-        } catch {}
-        setCurrentUser(null);
-        setUserRole(null);
-        setAuthLoading(false);
-        return;
-      }
-      setCurrentUser({ uid: user.uid, name: user.displayName || "Usuario", email: user.email, photoURL: user.photoURL });
-      if (!firestoreDb) { setUserRole("user"); setAuthLoading(false); return; }
-      const userRef = firestoreDb.collection(USERS_COLLECTION).doc(user.uid);
-      userRef.get().then((snap) => {
-        if (snap.exists) {
-          setUserRole(snap.data().role || "user");
-        } else {
-          // primera vez que esta persona inicia sesión: se crea su perfil con rol "user" por defecto
-          const profile = {
-            name: user.displayName || "Usuario",
-            email: user.email || "",
-            photoURL: user.photoURL || "",
-            role: "user",
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          };
-          userRef.set(profile).catch(() => {});
-          setUserRole("user");
-        }
-      }).catch(() => setUserRole("user"))
-        .finally(() => setAuthLoading(false));
-    });
-    return unsubscribe;
-  }, []);
-
-  function activateLocalSession() {
-    const localProfile = {
-      uid: "local-admin",
-      name: "Jugador (Modo Local)",
-      email: "admin@duelobiblico.local",
-      photoURL: "",
-    };
-    try {
-      localStorage.setItem("duelo-biblico:local-user", JSON.stringify(localProfile));
-    } catch {}
-    setCurrentUser(localProfile);
-    setUserRole("admin");
-    setAuthError("");
-  }
-
-  function signInWithGoogle() {
-    if (!firebaseAuth) {
-      activateLocalSession();
-      return;
-    }
-    setAuthError("");
-    const provider = new firebase.auth.GoogleAuthProvider();
-    firebaseAuth.signInWithPopup(provider).catch(() => {
-      // Si el dominio de vista previa o el popup está bloqueado, activamos la sesión local de respaldo
-      activateLocalSession();
-    });
-  }
-
-  function signOutUser() {
-    try {
-      localStorage.removeItem("duelo-biblico:local-user");
-    } catch {}
-    setCurrentUser(null);
-    setUserRole(null);
-    if (firebaseAuth) firebaseAuth.signOut();
-  }
-
-  const isAdmin = userRole === "admin";
-
-  // Si el usuario inicia sesión mientras está en la pantalla de login (pidiéndola
-  // para poder jugar), lo llevamos automáticamente a configurar los equipos.
-  useEffect(() => {
-    if (screen === "login" && currentUser) setScreen("setup");
-  }, [screen, currentUser]);
-
-  // ---- Panel de administradores: solo se carga la lista de usuarios
-  // registrados cuando quien tiene la sesión abierta es admin. ----
-  const [allUsers, setAllUsers] = useState([]);
-  const [usersLoaded, setUsersLoaded] = useState(false);
-  useEffect(() => {
-    if (!isAdmin || !firestoreDb) { setAllUsers([]); setUsersLoaded(false); return; }
-    const unsubscribe = firestoreDb.collection(USERS_COLLECTION).onSnapshot(
-      (snap) => {
-        const users = snap.docs.map((doc) => ({ uid: doc.id, ...doc.data() }));
-        users.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-        setAllUsers(users);
-        setUsersLoaded(true);
-      },
-      () => setUsersLoaded(true)
-    );
-    return unsubscribe;
-  }, [isAdmin]);
-
-  function setUserRoleByUid(uid, role) {
-    if (!firestoreDb) return;
-    firestoreDb.collection(USERS_COLLECTION).doc(uid).update({ role }).catch(() => {});
-  }
 
   useEffect(() => {
     function handleFullscreenChange() {
@@ -1169,16 +1036,8 @@ function App() {
 
       {screen === "landing" && (
         <LandingScreen
-          onStart={() => setScreen(currentUser ? "setup" : "login")}
+          onStart={() => setScreen("setup")}
           onManage={() => openManage("landing")}
-        />
-      )}
-
-      {screen === "login" && (
-        <LoginScreen
-          authLoading={authLoading} currentUser={currentUser} authError={authError}
-          onSignIn={signInWithGoogle}
-          onBack={() => setScreen("landing")}
         />
       )}
 
@@ -1190,8 +1049,6 @@ function App() {
           team2Color={team2Color} setTeam2Color={setTeam2Color} team2Icon={team2Icon} setTeam2Icon={setTeam2Icon}
           customCount={customCount}
           remoteMode={remoteMode} setRemoteMode={setRemoteMode}
-          currentUser={currentUser} userRole={userRole} authLoading={authLoading}
-          onSignIn={signInWithGoogle} onSignOut={signOutUser}
           onManage={() => openManage("setup")}
           onSettings={() => openSettings("setup")}
           onNext={goToBookSelect}
@@ -1216,7 +1073,6 @@ function App() {
           team1Name={teamName(1)} team2Name={teamName(2)}
           team1Color={team1Color} team2Color={team2Color}
           books={library}
-          userRole={userRole}
           questionOrder={questionOrder}
           setQuestionOrder={setQuestionOrder}
           orderBasis={orderBasis}
@@ -1241,28 +1097,17 @@ function App() {
       )}
 
       {screen === "settings" && (
-        isAdmin ? (
-          <SettingsScreen
-            difficultyTimers={difficultyTimers} setDifficultyTimer={setDifficultyTimer}
-            orderBasis={orderBasis} setOrderBasis={setOrderBasis}
-            questionOrder={questionOrder} setQuestionOrder={setQuestionOrder}
-            answerMode={answerMode} setAnswerMode={setAnswerMode}
-            feedbackDisplaySeconds={feedbackDisplaySeconds} setFeedbackDisplaySeconds={setFeedbackDisplaySeconds}
-            verseDisplaySeconds={verseDisplaySeconds} setVerseDisplaySeconds={setVerseDisplaySeconds}
-            backgroundColor={backgroundColor} setBackgroundColor={setBackgroundColor}
-            narrationEnabled={narrationEnabled} setNarrationEnabled={setNarrationEnabled}
-            allUsers={allUsers} usersLoaded={usersLoaded} currentUser={currentUser} onSetUserRole={setUserRoleByUid}
-            onBack={() => setScreen(screenBeforeManage)}
-          />
-        ) : (
-          <AdminGateScreen
-            title="Configuración"
-            reason="Solo los administradores pueden cambiar la configuración del duelo."
-            authLoading={authLoading} currentUser={currentUser} userRole={userRole} authError={authError}
-            onSignIn={signInWithGoogle} onSignOut={signOutUser}
-            onBack={() => setScreen(screenBeforeManage)}
-          />
-        )
+        <SettingsScreen
+          difficultyTimers={difficultyTimers} setDifficultyTimer={setDifficultyTimer}
+          orderBasis={orderBasis} setOrderBasis={setOrderBasis}
+          questionOrder={questionOrder} setQuestionOrder={setQuestionOrder}
+          answerMode={answerMode} setAnswerMode={setAnswerMode}
+          feedbackDisplaySeconds={feedbackDisplaySeconds} setFeedbackDisplaySeconds={setFeedbackDisplaySeconds}
+          verseDisplaySeconds={verseDisplaySeconds} setVerseDisplaySeconds={setVerseDisplaySeconds}
+          backgroundColor={backgroundColor} setBackgroundColor={setBackgroundColor}
+          narrationEnabled={narrationEnabled} setNarrationEnabled={setNarrationEnabled}
+          onBack={() => setScreen(screenBeforeManage)}
+        />
       )}
 
       {screen === "game" && currentQ && (
@@ -1416,42 +1261,10 @@ function LandingScreen({ onStart, onManage }) {
   );
 }
 
-function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Color, setTeam1Color, team1Icon, setTeam1Icon, team2Color, setTeam2Color, team2Icon, setTeam2Icon, customCount, remoteMode, setRemoteMode, currentUser, userRole, authLoading, onSignIn, onSignOut, onManage, onSettings, onNext }) {
+function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Color, setTeam1Color, team1Icon, setTeam1Icon, team2Color, setTeam2Color, team2Icon, setTeam2Icon, customCount, remoteMode, setRemoteMode, onManage, onSettings, onNext }) {
   const canContinue = team1Name.trim() && team2Name.trim();
   return (
     <div style={styles.container} className="fade-in">
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-        {!authLoading && (
-          currentUser ? (
-            <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-              {currentUser.photoURL && (
-                <img src={currentUser.photoURL} alt={currentUser.name} style={{ width: 24, height: 24, borderRadius: "50%" }} />
-              )}
-              <span style={{ color: "#B8A98A" }}>
-                {currentUser.name}{userRole === "admin" && <span style={{ color: "#D9A93B", fontWeight: 700 }}> · admin</span>}
-              </span>
-              <button
-                type="button" onClick={onSignOut}
-                style={{ background: "none", border: "none", color: "#8FA0B8", textDecoration: "underline", cursor: "pointer", fontSize: 11.5 }}
-              >
-                Cerrar sesión
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button" className="font-ui"
-              onClick={onSignIn}
-              style={{
-                display: "flex", alignItems: "center", gap: 7, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
-                background: "rgba(255,255,255,0.04)", border: "1.5px solid #3A5578", color: "#B8A98A", fontSize: 12,
-              }}
-            >
-              <GoogleIcon size={14} /> Iniciar sesión
-            </button>
-          )
-        )}
-      </div>
-
       <header style={{ textAlign: "center", marginBottom: 40 }}>
         <RoseWindow size={100} colorA={team1Color} colorB={team2Color} />
         <h1 className="font-display" style={styles.h1}>Debate Bíblico</h1>
@@ -1541,7 +1354,7 @@ function SetupScreen({ team1Name, setTeam1Name, team2Name, setTeam2Name, team1Co
             {customCount > 0 ? `Editar mis preguntas (${customCount})` : "Agregar preguntas"}
           </button>
 
-          {userRole === "admin" && (
+          {(
             <button
               className="font-ui"
               onClick={onSettings}
@@ -1748,7 +1561,7 @@ function TeamCard({ label, name, setName, color, setColor, icon, setIcon }) {
 /* ---------------------------------------------------------
    PANTALLA: Configuración
 --------------------------------------------------------- */
-function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setOrderBasis, questionOrder, setQuestionOrder, answerMode, setAnswerMode, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, allUsers, usersLoaded, currentUser, onSetUserRole, onBack }) {
+function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setOrderBasis, questionOrder, setQuestionOrder, answerMode, setAnswerMode, feedbackDisplaySeconds, setFeedbackDisplaySeconds, verseDisplaySeconds, setVerseDisplaySeconds, backgroundColor, setBackgroundColor, narrationEnabled, setNarrationEnabled, onBack }) {
   return (
     <div style={styles.container} className="fade-in">
       <button
@@ -1950,55 +1763,6 @@ function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setO
         </label>
       </div>
 
-      <div style={{ ...styles.card, maxWidth: 420, margin: "16px auto 0" }}>
-        <div className="font-ui" style={{ display: "flex", alignItems: "center", gap: 8, color: "#B8892B", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 14 }}>
-          <Lock size={16} /> Administradores
-        </div>
-        <p className="font-ui" style={{ fontSize: 12, color: "#8FA0B8", marginBottom: 14 }}>
-          Los administradores pueden editar preguntas y cambiar esta configuración. Aquí puedes dar o quitar ese permiso a cualquier persona que ya haya iniciado sesión al menos una vez.
-        </p>
-        {!usersLoaded ? (
-          <p className="font-ui" style={{ fontSize: 12.5, color: "#8FA0B8" }}>Cargando usuarios…</p>
-        ) : allUsers.length === 0 ? (
-          <p className="font-ui" style={{ fontSize: 12.5, color: "#8FA0B8" }}>Todavía no hay usuarios registrados.</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {allUsers.map((u) => {
-              const isSelf = currentUser && u.uid === currentUser.uid;
-              const isUserAdmin = u.role === "admin";
-              return (
-                <div key={u.uid} className="font-ui" style={{
-                  display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8,
-                  background: "rgba(255,255,255,0.03)", border: "1.5px solid #3A5578",
-                }}>
-                  {u.photoURL && <img src={u.photoURL} alt={u.name} style={{ width: 28, height: 28, borderRadius: "50%", flex: "0 0 auto" }} />}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: "#F5EFE0", fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {u.name || "Sin nombre"} {isSelf && <span style={{ color: "#8FA0B8", fontWeight: 400 }}>(tú)</span>}
-                    </div>
-                    <div style={{ color: "#8FA0B8", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onSetUserRole(u.uid, isUserAdmin ? "user" : "admin")}
-                    disabled={isSelf}
-                    title={isSelf ? "No puedes cambiar tu propio rol desde aquí" : undefined}
-                    style={{
-                      flex: "0 0 auto", padding: "5px 11px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-                      cursor: isSelf ? "not-allowed" : "pointer", opacity: isSelf ? 0.5 : 1,
-                      background: isUserAdmin ? "rgba(184,137,43,0.16)" : "rgba(255,255,255,0.04)",
-                      border: isUserAdmin ? "1.5px solid #B8892B" : "1.5px solid #3A5578",
-                      color: isUserAdmin ? "#D9A93B" : "#B8A98A",
-                    }}
-                  >
-                    {isUserAdmin ? "★ Admin" : "Hacer admin"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -2008,7 +1772,7 @@ function SettingsScreen({ difficultyTimers, setDifficultyTimer, orderBasis, setO
 --------------------------------------------------------- */
 function BookSelectScreen({
   team1Name, team2Name, team1Color, team2Color,
-  books, userRole, questionOrder = "random", setQuestionOrder,
+  books, questionOrder = "random", setQuestionOrder,
   orderBasis = "mixed", setOrderBasis,
   onSelect, onManage,
 }) {
@@ -2558,114 +2322,6 @@ function BookSelectScreen({
   );
 }
 
-
-/* ---------------------------------------------------------
-   PANTALLA: Preguntas (crear, editar, borrar — de cualquier libro)
---------------------------------------------------------- */
-function LoginScreen({ authLoading, currentUser, authError, onSignIn, onBack }) {
-  return (
-    <div style={styles.container} className="fade-in">
-      <button
-        className="font-ui"
-        onClick={onBack}
-        style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#B8A98A", fontSize: 14, cursor: "pointer", marginBottom: 18 }}
-      >
-        <ArrowLeft size={16} /> Volver
-      </button>
-
-      <div style={{ ...styles.card, maxWidth: 420, margin: "40px auto 0", textAlign: "center" }}>
-        <RoseWindow size={70} colorA="#8B2E3F" colorB="#1F6F5C" />
-        <h2 className="font-display" style={{ fontSize: 22, color: "#F5EFE0", margin: "10px 0 8px" }}>Inicia sesión para jugar</h2>
-        <p className="font-ui" style={{ color: "#8FA0B8", fontSize: 13.5, marginBottom: 22 }}>
-          Para empezar una partida necesitas una cuenta. Usa tu cuenta de Google — es rápido y no necesitas crear otra contraseña.
-        </p>
-
-        {authLoading ? (
-          <p className="font-ui" style={{ color: "#8FA0B8", fontSize: 13 }}>Verificando tu sesión…</p>
-        ) : currentUser ? (
-          <p className="font-ui" style={{ color: "#4CA98D", fontSize: 13.5, fontWeight: 700 }}>¡Sesión iniciada! Entrando…</p>
-        ) : (
-          <button
-            type="button" className="font-ui"
-            onClick={onSignIn}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 10, padding: "11px 22px", borderRadius: 10, cursor: "pointer",
-              background: "#F5EFE0", border: "1.5px solid #F5EFE0", color: "#16233D", fontSize: 14.5, fontWeight: 700,
-            }}
-          >
-            <GoogleIcon size={19} /> Continuar con Google
-          </button>
-        )}
-        {authError && (
-          <p className="font-ui" style={{ color: "#C0405A", fontSize: 12.5, marginTop: 14 }}>{authError}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function AdminGateScreen({ title, reason, authLoading, currentUser, userRole, authError, onSignIn, onSignOut, onBack }) {
-  return (
-    <div style={styles.container} className="fade-in">
-      <button
-        className="font-ui"
-        onClick={onBack}
-        style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#B8A98A", fontSize: 14, cursor: "pointer", marginBottom: 18 }}
-      >
-        <ArrowLeft size={16} /> Volver
-      </button>
-
-      <div style={{ ...styles.card, maxWidth: 420, margin: "40px auto 0", textAlign: "center" }}>
-        <Lock size={32} color="#B8892B" style={{ margin: "0 auto 14px" }} />
-        <h2 className="font-display" style={{ fontSize: 22, color: "#F5EFE0", margin: "0 0 8px" }}>{title}</h2>
-        <p className="font-ui" style={{ color: "#8FA0B8", fontSize: 13.5, marginBottom: 22 }}>{reason}</p>
-
-        {authLoading ? (
-          <p className="font-ui" style={{ color: "#8FA0B8", fontSize: 13 }}>Verificando tu sesión…</p>
-        ) : !currentUser ? (
-          <button
-            type="button" className="font-ui"
-            onClick={onSignIn}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 10, padding: "10px 20px", borderRadius: 10, cursor: "pointer",
-              background: "#F5EFE0", border: "1.5px solid #F5EFE0", color: "#16233D", fontSize: 14, fontWeight: 700,
-            }}
-          >
-            <GoogleIcon size={18} /> Iniciar sesión con Google
-          </button>
-        ) : (
-          <>
-            <div className="font-ui" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 14 }}>
-              {currentUser.photoURL && (
-                <img src={currentUser.photoURL} alt={currentUser.name} style={{ width: 32, height: 32, borderRadius: "50%" }} />
-              )}
-              <div style={{ textAlign: "left" }}>
-                <div style={{ color: "#F5EFE0", fontSize: 13.5, fontWeight: 700 }}>{currentUser.name}</div>
-                <div style={{ color: "#8FA0B8", fontSize: 11.5 }}>{currentUser.email}</div>
-              </div>
-            </div>
-            <p className="font-ui" style={{ color: "#C0405A", fontSize: 13, marginBottom: 14 }}>
-              Tu cuenta no tiene permisos de administrador (rol actual: {userRole || "usuario"}).
-            </p>
-            <button
-              type="button" className="font-ui"
-              onClick={onSignOut}
-              style={{
-                padding: "8px 16px", borderRadius: 8, cursor: "pointer",
-                background: "rgba(255,255,255,0.04)", border: "1.5px solid #3A5578", color: "#B8A98A", fontSize: 12.5, fontWeight: 700,
-              }}
-            >
-              Probar con otra cuenta
-            </button>
-          </>
-        )}
-        {authError && (
-          <p className="font-ui" style={{ color: "#C0405A", fontSize: 12.5, marginTop: 14 }}>{authError}</p>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function ManageQuestionsScreen({ library, initialBookId, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onReorderQuestions, saveError, loaded, onBack }) {
   const [selectedBookId, setSelectedBookId] = useState(initialBookId || library[0]?.id);
